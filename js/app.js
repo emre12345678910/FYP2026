@@ -1,8 +1,9 @@
 // app.js — UI controller for the Eastside FC Rehab & Monitoring App
 import {
-  getAthletes, addAthlete, saveCheckin, deleteCheckin, checkinsForAthlete,
+  getAthletes, addAthlete, updateAthlete, saveCheckin, deleteCheckin, checkinsForAthlete,
   fluidLossPct, totalWorkload, romPct, formatSgt, sgtDay,
   getOverride, setOverride,
+  getHydrationToday, addBottle, removeBottle, DEFAULT_BOTTLE_ML,
   INTENSITY_LEVELS, HIGH_INTENSITY, SLEEP_TIERS, MACRO_TAGS,
 } from './store.js';
 
@@ -98,13 +99,60 @@ function athleteAlertBanner() {
   </section>`;
 }
 
+// Hydration tracker: a health-bar + bottle button (+1) for today's water intake.
+function hydrationTracker() {
+  if (!state.selectedAthlete) return '';
+  const a = athleteById(state.selectedAthlete);
+  if (!a) return '';
+  const bottleMl = a.bottleMl || DEFAULT_BOTTLE_ML;
+  const goal = a.hydrationGoalMl || 3000;
+  const today = getHydrationToday(a.id);
+  const pct = Math.min(100, Math.round((today.ml / goal) * 100));
+  const goalReached = today.ml >= goal;
+  const barCls = pct >= 100 ? 'full' : pct >= 50 ? 'ok' : 'low';
+
+  return `
+  <section class="panel hydration-panel">
+    <div class="panel-head">
+      <h2>💧 Hydration — Today (SGT)</h2>
+      <label class="bottle-cap">Bottle capacity (ml)
+        <input type="number" id="bottle-ml" min="50" step="50" value="${bottleMl}">
+      </label>
+    </div>
+    <div class="hydration-row">
+      <button class="bottle-btn" id="bottle-add" title="Tap the bottle each time you finish it (+${bottleMl} ml)">
+        <span class="bottle-emoji">🍶</span>
+        <span class="bottle-plus">+1</span>
+      </button>
+      <div class="hydration-bar-wrap">
+        <div class="hydration-bar">
+          <div class="hydration-fill ${barCls}" style="width:${pct}%"></div>
+          <span class="hydration-label">${today.ml} / ${goal} ml · ${pct}%</span>
+        </div>
+        <div class="hydration-meta">
+          <span>${today.taps} bottle${today.taps === 1 ? '' : 's'} drunk today</span>
+          <button class="link-del" id="bottle-remove" ${today.taps === 0 ? 'disabled' : ''}>undo −1</button>
+          ${goalReached ? '<span class="pill ok">🎯 Goal reached!</span>' : ''}
+        </div>
+      </div>
+    </div>
+  </section>`;
+}
+
 function athleteView(athletes) {
   const opts = athletes.map((a) =>
     `<option value="${a.id}" ${a.id === state.selectedAthlete ? 'selected' : ''}>${esc(a.name)}</option>`).join('');
 
+  const a = athleteById(state.selectedAthlete);
+  const profile = a ? `<div class="athlete-profile muted small">
+      ${a.age != null ? `Age ${a.age}` : ''}${a.age != null && a.currentWeight != null ? ' · ' : ''}${a.currentWeight != null ? `${a.currentWeight} kg` : ''}
+    </div>` : '';
+
   return `
   ${athleteAlertBanner()}
+  ${hydrationTracker()}
   <section class="panel">
+    ${profile}
     <div class="panel-head">
       <h2>Daily / Session Check-in</h2>
       <div class="athlete-pick">
@@ -117,10 +165,9 @@ function athleteView(athletes) {
 
     <form id="checkin-form" class="form-grid">
       <fieldset>
-        <legend>⚖️ Body Mass &amp; Hydration</legend>
+        <legend>⚖️ Body Mass</legend>
         <label>Pre-session weight (kg)<input type="number" step="0.1" name="pre_weight_kg"></label>
         <label>Post-session weight (kg)<input type="number" step="0.1" name="post_weight_kg"></label>
-        <label>Thirst score (1–10)<input type="number" min="1" max="10" name="thirst_score"></label>
       </fieldset>
 
       <fieldset>
@@ -229,9 +276,34 @@ function bindAthleteForm() {
   if (addBtn) addBtn.addEventListener('click', () => {
     const name = prompt('Athlete name?');
     if (!name) return;
+    const currentWeight = prompt(`Current weight (kg) for ${name}?`, '');
+    const age = prompt(`Age for ${name}?`, '');
     const baseline = prompt('Baseline ROM joint angle in degrees (e.g. 135)?', '135');
-    const a = addAthlete(name, baseline);
+    const bottleMl = prompt('Water bottle capacity (ml)?', String(DEFAULT_BOTTLE_ML));
+    const a = addAthlete({ name, romBaseline: baseline, currentWeight, age, bottleMl });
     state.selectedAthlete = a.id;
+    render();
+  });
+
+  // --- Hydration tracker handlers ---
+  const bottleMlInput = root.querySelector('#bottle-ml');
+  if (bottleMlInput) {
+    bottleMlInput.addEventListener('change', () => {
+      const val = Math.max(50, Number(bottleMlInput.value) || DEFAULT_BOTTLE_ML);
+      updateAthlete(state.selectedAthlete, { bottleMl: val });
+      render();
+    });
+  }
+  const addBottleBtn = root.querySelector('#bottle-add');
+  if (addBottleBtn) addBottleBtn.addEventListener('click', () => {
+    const a = athleteById(state.selectedAthlete);
+    addBottle(state.selectedAthlete, (a && a.bottleMl) || DEFAULT_BOTTLE_ML);
+    render();
+  });
+  const removeBottleBtn = root.querySelector('#bottle-remove');
+  if (removeBottleBtn) removeBottleBtn.addEventListener('click', () => {
+    const a = athleteById(state.selectedAthlete);
+    removeBottle(state.selectedAthlete, (a && a.bottleMl) || DEFAULT_BOTTLE_ML);
     render();
   });
 
@@ -250,7 +322,6 @@ function bindAthleteForm() {
       athleteId: state.selectedAthlete,
       pre_weight_kg: num('pre_weight_kg'),
       post_weight_kg: num('post_weight_kg'),
-      thirst_score: num('thirst_score'),
       joint_tested: str('joint_tested'),
       goniometer_degrees: num('goniometer_degrees'),
       pain_score: num('pain_score'),
@@ -433,7 +504,7 @@ function coachDetail() {
       <div class="table-wrap">
         <table class="data-table">
           <thead><tr>
-            <th>SGT</th><th>Readiness</th><th>Pre/Post kg</th><th>Fluid%</th><th>Thirst</th><th>sRPE</th><th>Intensity</th>
+            <th>SGT</th><th>Readiness</th><th>Pre/Post kg</th><th>Fluid%</th><th>sRPE</th><th>Intensity</th>
             <th>Dur</th><th>Workload</th><th>Pain</th><th>Location</th><th>Joint / °</th><th>ROM%</th><th>Sleep</th><th>Qual</th>
           </tr></thead>
           <tbody>${rawRows(a, checkins)}</tbody>
@@ -444,7 +515,7 @@ function coachDetail() {
 }
 
 function rawRows(a, checkins) {
-  if (!checkins.length) return '<tr><td colspan="15" class="muted">No data</td></tr>';
+  if (!checkins.length) return '<tr><td colspan="14" class="muted">No data</td></tr>';
   return checkins.slice().reverse().map((c) => {
     const loss = fluidLossPct(c.pre_weight_kg, c.post_weight_kg);
     const rom = c.rom_percentage;
@@ -455,7 +526,6 @@ function rawRows(a, checkins) {
       <td><span class="tier ${rt.cls}">${rt.icon} ${rt.tier}</span></td>
       <td>${c.pre_weight_kg ?? '—'} / ${c.post_weight_kg ?? '—'}</td>
       <td class="${loss != null && loss > 2 ? 'cell-red' : ''}">${loss != null ? loss.toFixed(1) + '%' : '—'}</td>
-      <td>${c.thirst_score ?? '—'}</td>
       <td>${c.srpe ?? '—'}</td>
       <td>${esc(c.intensity_level || '—')}</td>
       <td>${c.duration_mins ?? '—'}</td>
