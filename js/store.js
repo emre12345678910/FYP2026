@@ -133,6 +133,7 @@ export function saveCheckin(input, athlete) {
 
     // Sleep
     sleep_hours: input.sleep_hours ?? null,
+    sleep_minutes: input.sleep_minutes ?? null,
     sleep_start: input.sleep_start || null,
     sleep_end: input.sleep_end || null,
 
@@ -255,13 +256,30 @@ export function totalWorkload(srpe, durationMin) {
 // Hours between a "slept at" and "woke at" time (HH:MM strings). Handles the
 // overnight case (wake time earlier than sleep time rolls to the next day).
 export function sleepHoursBetween(startHHMM, endHHMM) {
+  const mins = sleepMinutesBetween(startHHMM, endHHMM);
+  if (mins == null) return null;
+  return Math.round((mins / 60) * 10) / 10; // 1 decimal
+}
+
+// Total minutes slept between two HH:MM times (overnight-aware).
+export function sleepMinutesBetween(startHHMM, endHHMM) {
   if (!startHHMM || !endHHMM) return null;
   const [sh, sm] = startHHMM.split(':').map(Number);
   const [eh, em] = endHHMM.split(':').map(Number);
   if ([sh, sm, eh, em].some((n) => Number.isNaN(n))) return null;
   let mins = (eh * 60 + em) - (sh * 60 + sm);
   if (mins <= 0) mins += 24 * 60; // crossed midnight
-  return Math.round((mins / 60) * 10) / 10; // 1 decimal
+  return mins;
+}
+
+// Formats a total minute count as "7 h 30 min" (or "45 min" / "8 h").
+export function formatHoursMinutes(totalMinutes) {
+  if (totalMinutes == null) return '—';
+  const h = Math.floor(totalMinutes / 60);
+  const m = Math.round(totalMinutes % 60);
+  if (h === 0) return `${m} min`;
+  if (m === 0) return `${h} h`;
+  return `${h} h ${m} min`;
 }
 
 // ROM as a percentage of the athlete's baseline joint angle.

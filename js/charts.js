@@ -118,32 +118,21 @@ export function hydrationChart(series) {
   );
 }
 
-/* 4. Sleep vs recovery matrix — scatter: x=duration, y=quality, colour=readiness */
-export function sleepMatrixChart(points) {
-  // points: [{ hours, quality, tier }]  tier: green|yellow|red
-  if (!points.length) return emptyChart('No sleep data yet');
-  const xMin = 0, xMax = 12, yMin = 0, yMax = 10;
-  const sx = (v) => P.l + (v / xMax) * (W - P.l - P.r);
-  const sy = (v) => scaleY(v, yMin, yMax);
-  let grid = '';
-  for (let k = 0; k <= 4; k++) {
-    const y = scaleY((yMax * k) / 4, yMin, yMax);
-    grid += `<line x1="${P.l}" y1="${y}" x2="${W - P.r}" y2="${y}" class="grid"/>`;
-    grid += `<text x="${P.l - 6}" y="${y + 4}" class="ytick">${((yMax * k) / 4).toFixed(0)}</text>`;
-  }
-  for (let h = 0; h <= 12; h += 2) {
-    const x = sx(h);
-    grid += `<text x="${x}" y="${H - P.b + 16}" class="xtick">${h}h</text>`;
-  }
-  // 6h deprivation guide line
-  grid += `<line x1="${sx(6)}" y1="${P.t}" x2="${sx(6)}" y2="${H - P.b}" class="threshold"/>`;
-  grid += `<text x="${sx(6) + 2}" y="${P.t + 10}" class="ann red">6h</text>`;
-  const dots = points.map((p) =>
-    `<circle cx="${sx(p.hours)}" cy="${sy(p.quality)}" r="5" class="dot-${p.tier}"/>`
-  ).join('');
+/* 4. Sleep progression — line chart of hours slept per day, with a 6h guide */
+export function sleepChart(series) {
+  // series: [{ label, hours }]
+  if (!series.length) return emptyChart('No sleep data yet');
+  const labels = series.map((s) => s.label);
+  const min = 0;
+  const max = Math.max(10, Math.ceil(Math.max(...series.map((s) => s.hours ?? 0))));
+  const pts = series.map((s, i) => ({ x: scaleX(i, series.length), y: scaleY(s.hours ?? 0, min, max), hours: s.hours }));
+  const sixY = scaleY(6, min, max);
+  const dots = pts.map((p) => `<circle cx="${p.x}" cy="${p.y}" r="3" class="dot-${p.hours != null && p.hours < 6 ? 'yellow' : 'green'}"/>`).join('');
   return svgWrap(
-    `<text x="${W / 2}" y="12" class="chart-title">Sleep Duration (x) vs Quality (y) · colour = readiness</text>` +
-    grid + dots
+    axes(min, max, labels, { yFmt: (v) => v.toFixed(0) + 'h', title: 'Sleep per Day (hours)' }) +
+    `<line x1="${P.l}" y1="${sixY}" x2="${W - P.r}" y2="${sixY}" class="threshold"/>` +
+    `<text x="${W - P.r}" y="${sixY - 4}" class="ann red">6h min</text>` +
+    `<path d="${path(pts)}" class="line-green"/>` + dots
   );
 }
 

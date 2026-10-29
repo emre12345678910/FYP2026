@@ -1,7 +1,7 @@
 // app.js — UI controller for the Eastside FC Rehab & Monitoring App
 import {
   getAthletes, addAthlete, updateAthlete, saveCheckin, deleteCheckin, checkinsForAthlete,
-  fluidLossPct, totalWorkload, romPct, sleepHoursBetween, formatSgt, sgtDay,
+  fluidLossPct, totalWorkload, romPct, sleepHoursBetween, sleepMinutesBetween, formatHoursMinutes, formatSgt, sgtDay,
   getOverride, setOverride,
   getHydrationToday, addBottle, removeBottle, DEFAULT_BOTTLE_ML,
   INTENSITY_LEVELS, HIGH_INTENSITY, MACRO_TAGS,
@@ -9,10 +9,18 @@ import {
 
 // Athlete lookup helper (for ROM baseline access at render time).
 function athleteById(id) { return getAthletes().find((a) => a.id === id); }
+
+// Display a check-in's sleep as "7 h 30 min" (prefers stored minutes; falls
+// back to hours for older records saved before the minutes field existed).
+function sleepDisplay(c) {
+  if (c.sleep_minutes != null) return formatHoursMinutes(c.sleep_minutes);
+  if (c.sleep_hours != null) return formatHoursMinutes(Math.round(c.sleep_hours * 60));
+  return '—';
+}
 import { evaluateAthlete, readinessTier, evaluateReadinessStatus, tierMeta } from './alerts.js';
 // NOTE: alerts.js import is placed above the helpers that use it (hoisted ES import).
 import {
-  romChart, painIntensityChart, hydrationChart, sleepMatrixChart, nutritionChart,
+  romChart, painIntensityChart, hydrationChart, sleepChart, nutritionChart,
 } from './charts.js';
 
 const root = document.getElementById('app');
@@ -226,6 +234,7 @@ function athleteView(athletes) {
             <span class="sleep-hours-label">Sleep duration</span>
             <span class="sleep-hours-value" id="sleep-hours-display">—</span>
             <input type="hidden" name="sleep_hours" id="sleep-hours">
+            <input type="hidden" name="sleep_minutes" id="sleep-minutes">
           </div>
         </div>
         <small class="hint">Tap “now” at bedtime and again on waking — hours are calculated automatically (overnight supported).</small>
@@ -290,7 +299,7 @@ function recentCheckins() {
       <td>${c.pain_score ?? '—'}</td>
       <td>${rom != null ? rom.toFixed(0) + '%' : '—'}</td>
       <td>${loss != null ? loss.toFixed(1) + '%' : '—'}</td>
-      <td>${c.sleep_hours != null ? c.sleep_hours + 'h' : '—'}</td>
+      <td>${sleepDisplay(c)}</td>
       <td><button class="link-del" data-del="${c.id}">delete</button></td>
     </tr>`;
   }).join('');
@@ -355,16 +364,20 @@ function bindAthleteForm() {
   const sleepStart = root.querySelector('#sleep-start');
   const sleepEnd = root.querySelector('#sleep-end');
   const sleepHours = root.querySelector('#sleep-hours');
+  const sleepMinutes = root.querySelector('#sleep-minutes');
   const sleepDisplay = root.querySelector('#sleep-hours-display');
   function recalcSleep() {
     if (!sleepStart || !sleepEnd) return;
-    const hrs = sleepHoursBetween(sleepStart.value, sleepEnd.value);
-    if (hrs != null) {
+    const mins = sleepMinutesBetween(sleepStart.value, sleepEnd.value);
+    if (mins != null) {
+      const hrs = sleepHoursBetween(sleepStart.value, sleepEnd.value);
       sleepHours.value = hrs;
-      sleepDisplay.textContent = `${hrs} h`;
-      sleepDisplay.classList.toggle('short', hrs < 6);
+      sleepMinutes.value = mins;
+      sleepDisplay.textContent = formatHoursMinutes(mins);
+      sleepDisplay.classList.toggle('short', mins < 360); // < 6 h
     } else {
       sleepHours.value = '';
+      sleepMinutes.value = '';
       sleepDisplay.textContent = '—';
       sleepDisplay.classList.remove('short');
     }
@@ -399,6 +412,7 @@ function bindAthleteForm() {
       intensity_level: str('intensity_level') || null,
       duration_mins: num('duration_mins'),
       sleep_hours: num('sleep_hours'),
+      sleep_minutes: num('sleep_minutes'),
       sleep_start: str('sleep_start') || null,
       sleep_end: str('sleep_end') || null,
       nutrition_log: {
@@ -418,45 +432,76 @@ function bindAthleteForm() {
 }
 
 /* --------------------- Shared analytics chart builders ------------------- */
-// Builds the five chart series objects from an athlete's check-ins.
-function buildChartSeries(a, checkins) {
-  const romSeries = checkins.filter((c) => c.rom_percentage != null || c.goniometer_degrees != null).map((c) => ({
-    label: sgtDay(c.timestampUtc).slice(5),
-    pct: c.rom_percentage != null ? c.rom_percentage : romPct(c.goniometer_degrees, a.romBaseline),
-  }));
-  const painSeries = checkins.filter((c) => c.srpe != null || c.pain_score != null).map((c) => ({
-    label: sgtDay(c.timestampUtc).slice(5), srpe: c.srpe, pain: c.pain_score,
-  }));
-  const hydSeries = checkins.filter((c) => c.pre_weight_kg != null || c.post_weight_kg != null).map((c) => ({
-    label: sgtDay(c.timestampUtc).slice(5), pre: c.pre_weight_kg, post: c.post_weight_kg,
-    lossPct: fluidLossPct(c.pre_weight_kg, c.post_weight_kg),
-  }));
-  const sleepPts = checkins.filter((c) => c.sleep_hours != null).map((c) => {
-    // Readiness proxy on a 0–10 scale derived from sleep duration (no quality field).
-    const readiness = Math.max(0, Math.min(10, Math.round((c.sleep_hours / 8) * 10)));
-    const tier = c.sleep_hours < 5 ? 'red' : c.sleep_hours < 6 ? 'yellow' : 'green';
-    return { hours: c.sleep_hours, quality: readiness, tier };
-  });
-  const nutSeries = checkins.filter((c) => c.srpe != null && c.duration_mins != null).map((c) => {
-    const nl = c.nutrition_log || {};
-    return {
-      label: sgtDay(c.timestampUtc).slice(5),
-      workload: c.workload,
-      fueled: !!(nl.pre_workout_meal && nl.pre_workout_meal.trim()) && nl.fueled_before_session === true,
-    };
-  });
-  return { romSeries, painSeries, hydSeries, sleepPts, nutSeries };
+// Groups an athlete's check-ins by SGT calendar day, in chronological order.
+// Returns [{ day: 'MM-DD', items: [...] }], so every chart shows one
+// point/bar per day — a true day-over-day progression (line & bar only).
+function groupByDay(checkins) {
+  const map = new Map();
+  for (const c of checkins) {
+    const day = c.sgtDay || sgtDay(c.timestampUtc);
+    if (!map.has(day)) map.set(day, []);
+    map.get(day).push(c);
+  }
+  return [...map.entries()]
+    .sort((x, y) => (x[0] < y[0] ? -1 : 1))
+    .map(([day, items]) => ({ day, label: day.slice(5), items }));
 }
 
-// Renders the five analytics charts for an athlete. Shared by the coach
-// dashboard and the athlete's own "My Progress" view.
+// Average of a field across a day's check-ins (ignores null/undefined).
+function avg(items, pick) {
+  const vals = items.map(pick).filter((v) => v != null);
+  if (!vals.length) return null;
+  return vals.reduce((s, v) => s + v, 0) / vals.length;
+}
+
+// Builds the five chart series, aggregated per SGT day for multi-day trends.
+function buildChartSeries(a, checkins) {
+  const days = groupByDay(checkins);
+
+  const romSeries = days.map((d) => ({
+    label: d.label,
+    pct: avg(d.items, (c) => (c.rom_percentage != null ? c.rom_percentage : romPct(c.goniometer_degrees, a.romBaseline))),
+  })).filter((d) => d.pct != null);
+
+  const painSeries = days.map((d) => ({
+    label: d.label,
+    srpe: avg(d.items, (c) => c.srpe),
+    pain: avg(d.items, (c) => c.pain_score),
+  })).filter((d) => d.srpe != null || d.pain != null);
+
+  const hydSeries = days.map((d) => ({
+    label: d.label,
+    pre: avg(d.items, (c) => c.pre_weight_kg),
+    post: avg(d.items, (c) => c.post_weight_kg),
+  })).filter((d) => d.pre != null || d.post != null);
+
+  const sleepSeries = days.map((d) => ({
+    label: d.label,
+    hours: avg(d.items, (c) => c.sleep_hours),
+  })).filter((d) => d.hours != null);
+
+  const nutSeries = days.map((d) => ({
+    label: d.label,
+    workload: avg(d.items, (c) => c.workload),
+    // a day counts as fueled if every logged session that day was fueled in time
+    fueled: d.items.filter((c) => c.workload != null).every((c) => {
+      const nl = c.nutrition_log || {};
+      return !!(nl.pre_workout_meal && nl.pre_workout_meal.trim()) && nl.fueled_before_session === true;
+    }),
+  })).filter((d) => d.workload != null);
+
+  return { romSeries, painSeries, hydSeries, sleepSeries, nutSeries };
+}
+
+// Renders the analytics charts (line & bar) for an athlete. Shared by the
+// coach dashboard and the athlete's own "My Progress" view.
 function renderCharts(a, checkins) {
   const s = buildChartSeries(a, checkins);
   return `
     <div class="chart-card">${romChart(s.romSeries)}</div>
     <div class="chart-card">${painIntensityChart(s.painSeries)}</div>
     <div class="chart-card">${hydrationChart(s.hydSeries)}</div>
-    <div class="chart-card">${sleepMatrixChart(s.sleepPts)}</div>
+    <div class="chart-card">${sleepChart(s.sleepSeries)}</div>
     <div class="chart-card">${nutritionChart(s.nutSeries)}</div>`;
 }
 
@@ -613,7 +658,7 @@ function rawRows(a, checkins) {
       <td>${esc(c.pain_location || '—')}</td>
       <td>${esc(c.joint_tested || '—')}${c.goniometer_degrees != null ? ' · ' + c.goniometer_degrees + '°' : ''}</td>
       <td class="${rom != null && rom < 60 ? 'cell-red' : ''}">${rom != null ? rom.toFixed(0) + '%' : '—'}</td>
-      <td class="${c.sleep_hours != null && c.sleep_hours < 6 ? 'cell-yellow' : ''}">${c.sleep_hours != null ? c.sleep_hours + 'h' : '—'}</td>
+      <td class="${c.sleep_hours != null && c.sleep_hours < 6 ? 'cell-yellow' : ''}">${sleepDisplay(c)}</td>
       <td>${c.sleep_start && c.sleep_end ? esc(c.sleep_start + '–' + c.sleep_end) : '—'}</td>
     </tr>`;
   }).join('');
