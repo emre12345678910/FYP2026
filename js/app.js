@@ -314,6 +314,46 @@ function athleteCharts() {
   <section class="panel">
     <h2>📊 My Progress <span class="muted small">· your personal trends across all metrics</span></h2>
     <div class="charts">${renderCharts(a, checkins)}</div>
+  </section>
+  ${dietLog(checkins)}`;
+}
+
+// Timestamped diet / nutrition log sheet (most recent first). Shows each
+// logged meal entry with its SGT time, meal window, macro tags and fueling.
+function dietLog(checkins) {
+  // Flatten each check-in's nutrition_log into per-meal rows, keeping the
+  // check-in's SGT timestamp against every meal entry.
+  const rows = [];
+  checkins.slice().reverse().forEach((c) => {
+    const nl = c.nutrition_log || {};
+    const ts = formatSgt(c.timestampUtc);
+    const tags = (nl.quality_tags || []).map((m) => `<span class="pill">${esc(m)}</span>`).join(' ');
+    const meals = [
+      ['Pre-workout', nl.pre_workout_meal],
+      ['Post-workout', nl.post_workout_meal],
+      ['Main meal', nl.main_meal],
+    ].filter(([, v]) => v && v.trim());
+    meals.forEach(([window, desc], i) => {
+      rows.push(`<tr>
+        <td>${i === 0 ? esc(ts) : ''}</td>
+        <td><span class="pill">${window}</span></td>
+        <td>${esc(desc)}</td>
+        <td>${window === 'Pre-workout' ? (nl.fueled_before_session ? '<span class="pill ok">ate 2–3h before</span>' : '<span class="pill warn">not timely</span>') : ''}</td>
+        <td>${i === 0 ? (tags || '—') : ''}</td>
+      </tr>`);
+    });
+  });
+
+  return `
+  <section class="panel">
+    <h3>🍽️ Diet Log <span class="muted small">· every meal entry, timestamped (SGT)</span></h3>
+    ${rows.length ? `
+    <div class="table-wrap">
+      <table class="data-table">
+        <thead><tr><th>Time (SGT)</th><th>Window</th><th>Meal</th><th>Fueling</th><th>Tags</th></tr></thead>
+        <tbody>${rows.join('')}</tbody>
+      </table>
+    </div>` : '<p class="muted">No meals logged yet. Add meals in the Nutrition section of a check-in.</p>'}
   </section>`;
 }
 
