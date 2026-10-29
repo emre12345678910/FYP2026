@@ -46,24 +46,46 @@ export function sgtDay(utcIso) {
 
 /* ------------------------------- Athletes -------------------------------- */
 
+// Default daily hydration goal (ml) used to fill the hydration bar.
+export const DEFAULT_HYDRATION_GOAL_ML = 3000;
+export const DEFAULT_BOTTLE_ML = 750;
+
 export function getAthletes() {
   const raw = localStorage.getItem(ATHLETE_KEY);
   if (raw) return JSON.parse(raw);
   const seed = [
-    { id: 'a1', name: 'Marcus Tan', romBaseline: 135 },
-    { id: 'a2', name: 'Priya Nair', romBaseline: 140 },
-    { id: 'a3', name: 'Devon Lee', romBaseline: 130 },
+    { id: 'a1', name: 'Marcus Tan', romBaseline: 135, currentWeight: 72.5, age: 24, bottleMl: 750, hydrationGoalMl: 3000 },
+    { id: 'a2', name: 'Priya Nair', romBaseline: 140, currentWeight: 61.0, age: 27, bottleMl: 600, hydrationGoalMl: 2500 },
+    { id: 'a3', name: 'Devon Lee', romBaseline: 130, currentWeight: 80.3, age: 22, bottleMl: 1000, hydrationGoalMl: 3500 },
   ];
   localStorage.setItem(ATHLETE_KEY, JSON.stringify(seed));
   return seed;
 }
 
-export function addAthlete(name, romBaseline) {
+export function addAthlete({ name, romBaseline, currentWeight, age, bottleMl }) {
   const athletes = getAthletes();
-  const athlete = { id: 'a' + Date.now(), name: name.trim(), romBaseline: Number(romBaseline) || 135 };
+  const athlete = {
+    id: 'a' + Date.now(),
+    name: String(name).trim(),
+    romBaseline: Number(romBaseline) || 135,
+    currentWeight: currentWeight != null && currentWeight !== '' ? Number(currentWeight) : null,
+    age: age != null && age !== '' ? Number(age) : null,
+    bottleMl: Number(bottleMl) || DEFAULT_BOTTLE_ML,
+    hydrationGoalMl: DEFAULT_HYDRATION_GOAL_ML,
+  };
   athletes.push(athlete);
   localStorage.setItem(ATHLETE_KEY, JSON.stringify(athletes));
   return athlete;
+}
+
+// Patch mutable profile fields on an athlete (e.g. bottle capacity, weight).
+export function updateAthlete(id, patch) {
+  const athletes = getAthletes();
+  const a = athletes.find((x) => x.id === id);
+  if (!a) return null;
+  Object.assign(a, patch);
+  localStorage.setItem(ATHLETE_KEY, JSON.stringify(athletes));
+  return a;
 }
 
 /* ------------------------------- Check-ins ------------------------------- */
@@ -95,7 +117,6 @@ export function saveCheckin(input, athlete) {
     // Body Mass & Hydration
     pre_weight_kg: input.pre_weight_kg ?? null,
     post_weight_kg: input.post_weight_kg ?? null,
-    thirst_score: input.thirst_score ?? null,
 
     // ROM & Pain
     joint_tested: input.joint_tested || null,
@@ -168,6 +189,53 @@ export function checkinsForAthlete(athleteId) {
   return getCheckins()
     .filter((c) => c.athleteId === athleteId)
     .sort((a, b) => new Date(a.timestampUtc) - new Date(b.timestampUtc));
+}
+
+/* --------------------------- Hydration tracking -------------------------- */
+// Daily water intake, keyed by athleteId + SGT day. Stores ml drunk + the
+// number of bottle taps, so the bar can show both volume and count.
+const HYDRATION_KEY = 'eastside_fc_hydration_v1';
+
+function getHydrationStore() {
+  const raw = localStorage.getItem(HYDRATION_KEY);
+  return raw ? JSON.parse(raw) : {};
+}
+
+// Returns today's (SGT) hydration record for an athlete: { ml, taps }.
+export function getHydrationToday(athleteId) {
+  const day = sgtNow().date;
+  const store = getHydrationStore();
+  const rec = store[`${athleteId}|${day}`];
+  return rec ? { ...rec } : { ml: 0, taps: 0 };
+}
+
+// Adds one bottle (bottleMl) to today's intake for the athlete. Returns the
+// updated record.
+export function addBottle(athleteId, bottleMl) {
+  const day = sgtNow().date;
+  const store = getHydrationStore();
+  const key = `${athleteId}|${day}`;
+  const rec = store[key] || { ml: 0, taps: 0 };
+  rec.ml += Number(bottleMl) || 0;
+  rec.taps += 1;
+  rec.updatedSgt = sgtNow().sgt;
+  store[key] = rec;
+  localStorage.setItem(HYDRATION_KEY, JSON.stringify(store));
+  return { ...rec };
+}
+
+// Removes one bottle (floor at zero) — lets an athlete undo an accidental tap.
+export function removeBottle(athleteId, bottleMl) {
+  const day = sgtNow().date;
+  const store = getHydrationStore();
+  const key = `${athleteId}|${day}`;
+  const rec = store[key] || { ml: 0, taps: 0 };
+  rec.ml = Math.max(0, rec.ml - (Number(bottleMl) || 0));
+  rec.taps = Math.max(0, rec.taps - 1);
+  rec.updatedSgt = sgtNow().sgt;
+  store[key] = rec;
+  localStorage.setItem(HYDRATION_KEY, JSON.stringify(store));
+  return { ...rec };
 }
 
 /* ----------------------------- Derived metrics --------------------------- */

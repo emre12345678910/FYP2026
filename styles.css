@@ -226,3 +226,42 @@ input:focus, select:focus { outline: none; border-color: var(--blue); }
 .ov-btn.on.green { background: rgba(61,220,132,.2); border-color: var(--green); color: var(--green); font-weight: 700; }
 .ov-btn.on.yellow { background: rgba(255,204,77,.2); border-color: var(--yellow); color: var(--yellow); font-weight: 700; }
 .ov-btn.on.red { background: rgba(255,93,108,.2); border-color: var(--red); color: var(--red); font-weight: 700; }
+
+/* ----------------------------- Hydration tracker ---------------------------- */
+.hydration-panel .bottle-cap { flex-direction: row; align-items: center; gap: 8px; color: var(--muted); font-size: 13px; }
+.hydration-panel .bottle-cap input { width: 90px; }
+.athlete-profile { margin-bottom: 10px; }
+
+.hydration-row { display: flex; align-items: center; gap: 18px; }
+
+.bottle-btn {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  width: 84px; height: 84px; flex: 0 0 auto;
+  background: var(--panel-2); border: 2px solid var(--blue); border-radius: 16px;
+  cursor: pointer; transition: transform .08s, background .15s;
+}
+.bottle-btn:hover { background: #10212f; }
+.bottle-btn:active { transform: scale(0.92); }
+.bottle-emoji { font-size: 34px; line-height: 1; }
+.bottle-plus { font-size: 13px; font-weight: 800; color: var(--blue); margin-top: 2px; }
+
+.hydration-bar-wrap { flex: 1; min-width: 0; }
+.hydration-bar {
+  position: relative; height: 34px; border-radius: 999px;
+  background: #0e141b; border: 1px solid var(--line); overflow: hidden;
+}
+.hydration-fill {
+  height: 100%; border-radius: 999px 0 0 999px;
+  transition: width .35s ease;
+  background: linear-gradient(90deg, #2b6cb0, var(--blue));
+}
+.hydration-fill.low { background: linear-gradient(90deg, #7a4b00, var(--yellow)); }
+.hydration-fill.ok { background: linear-gradient(90deg, #2b6cb0, var(--blue)); }
+.hydration-fill.full { background: linear-gradient(90deg, #1f8a4c, var(--green)); }
+.hydration-label {
+  position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+  font-size: 13px; font-weight: 700; color: #fff; text-shadow: 0 1px 2px rgba(0,0,0,.6);
+}
+.hydration-meta { display: flex; align-items: center; gap: 12px; margin-top: 8px; font-size: 13px; color: var(--muted); }
+.hydration-meta .link-del { color: var(--blue); }
+.hydration-meta .link-del[disabled] { color: var(--line); cursor: default; }
