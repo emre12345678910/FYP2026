@@ -65,7 +65,7 @@ export function getAthletes() {
 export function addAthlete({ name, gender, romBaseline, currentWeight, age, bottleMl }) {
   const athletes = getAthletes();
   const athlete = {
-    id: 'a' + Date.now(),
+    id: 'a' + Date.now() + Math.floor(Math.random() * 100000),
     name: String(name).trim(),
     gender: gender || null,
     romBaseline: Number(romBaseline) || 135,
@@ -270,6 +270,33 @@ export function exerciseMinutesToday(athleteId) {
   return getCheckins()
     .filter((c) => c.athleteId === athleteId && (c.sgtDay || sgtDay(c.timestampUtc)) === day)
     .reduce((sum, c) => sum + (Number(c.duration_mins) || 0), 0);
+}
+
+// Deletes an athlete and all of their associated data: check-ins, coach
+// override, and hydration records. Returns true if the athlete existed.
+export function deleteAthlete(id) {
+  const athletes = getAthletes();
+  if (!athletes.some((a) => a.id === id)) return false;
+
+  // Remove the athlete.
+  localStorage.setItem(ATHLETE_KEY, JSON.stringify(athletes.filter((a) => a.id !== id)));
+
+  // Remove their check-ins.
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(getCheckins().filter((c) => c.athleteId !== id)));
+
+  // Remove their coach override.
+  const overrides = getOverrides();
+  if (overrides[id]) { delete overrides[id]; localStorage.setItem(OVERRIDE_KEY, JSON.stringify(overrides)); }
+
+  // Remove their hydration records (keys are "athleteId|SGTday").
+  const hyd = getHydrationStore();
+  let changed = false;
+  for (const key of Object.keys(hyd)) {
+    if (key.startsWith(id + '|')) { delete hyd[key]; changed = true; }
+  }
+  if (changed) localStorage.setItem(HYDRATION_KEY, JSON.stringify(hyd));
+
+  return true;
 }
 
 /* ----------------------------- Derived metrics --------------------------- */
