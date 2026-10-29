@@ -244,7 +244,8 @@ function athleteView(athletes) {
         <legend>📐 Range of Motion</legend>
         <label>Joint tested<input type="text" name="joint_tested" placeholder="e.g. Ankle Dorsiflexion"></label>
         <label>Goniometer angle (°)<input type="number" min="0" max="360" name="goniometer_degrees"></label>
-        <small class="hint">Mapped to % of this athlete's baseline automatically.</small>
+        <label>Baseline ROM (°)<input type="number" min="1" max="360" name="rom_baseline" id="rom-baseline" value="${a ? a.romBaseline : 135}"></label>
+        <small class="hint">Goniometer angle is mapped to % of this baseline automatically. Updating it here saves to the athlete's profile.</small>
       </fieldset>
 
       <fieldset>
@@ -367,9 +368,9 @@ function bindAthleteForm() {
     }
     const currentWeight = prompt(`Current weight (kg) for ${name}?`, '');
     const age = prompt(`Age for ${name}?`, '');
-    const baseline = prompt('Baseline ROM joint angle in degrees (e.g. 135)?', '135');
-    const bottleMl = prompt('Water bottle capacity (ml)?', String(DEFAULT_BOTTLE_ML));
-    const a = addAthlete({ name, gender, romBaseline: baseline, currentWeight, age, bottleMl });
+    // Baseline ROM is set from the check-in form (below the ROM inputs);
+    // bottle capacity is set beside the hydration bar. Both use defaults here.
+    const a = addAthlete({ name, gender, currentWeight, age });
     state.selectedAthlete = a.id;
     render();
   });
@@ -393,6 +394,13 @@ function bindAthleteForm() {
   if (removeBottleBtn) removeBottleBtn.addEventListener('click', () => {
     removeBottle(state.selectedAthlete);
     render();
+  });
+
+  // --- Baseline ROM: persist to the athlete profile when changed ---
+  const romBaselineInput = root.querySelector('#rom-baseline');
+  if (romBaselineInput) romBaselineInput.addEventListener('change', () => {
+    const val = Number(romBaselineInput.value);
+    if (val > 0) updateAthlete(state.selectedAthlete, { romBaseline: val });
   });
 
   root.querySelectorAll('[data-del]').forEach((b) =>
@@ -437,6 +445,10 @@ function bindAthleteForm() {
     const f = new FormData(form);
     const num = (k) => (f.get(k) !== '' && f.get(k) != null ? Number(f.get(k)) : null);
     const str = (k) => (f.get(k) ? String(f.get(k)).trim() : '');
+
+    // Persist any baseline-ROM edit before saving, so ROM% uses the right base.
+    const romBaseline = num('rom_baseline');
+    if (romBaseline && romBaseline > 0) updateAthlete(state.selectedAthlete, { romBaseline });
 
     const input = {
       athleteId: state.selectedAthlete,
