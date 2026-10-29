@@ -167,6 +167,7 @@ input:focus, select:focus { outline: none; border-color: var(--blue); }
 .chart .ann.red { fill: var(--red); }
 .chart .line-blue { fill: none; stroke: var(--blue); stroke-width: 2; }
 .chart .line-red { fill: none; stroke: var(--red); stroke-width: 2; }
+.chart .line-green { fill: none; stroke: var(--green); stroke-width: 2; }
 .chart .dot-blue { fill: var(--blue); }
 .chart .dot-red { fill: var(--red); }
 .chart .dot-green { fill: var(--green); }
