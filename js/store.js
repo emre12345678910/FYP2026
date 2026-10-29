@@ -1,0 +1,197 @@
+// store.js — persistence + Singapore Time + core domain logic
+// Zero dependencies. Data persists in localStorage.
+
+export const SGT = 'Asia/Singapore';
+const STORAGE_KEY = 'eastside_fc_checkins_v1';
+const ATHLETE_KEY = 'eastside_fc_athletes_v1';
+
+/* ----------------------------- Singapore Time ---------------------------- */
+
+// Returns an ISO-like timestamp anchored to Asia/Singapore (UTC+8) with offset.
+export function sgtNow() {
+  return sgtFromDate(new Date());
+}
+
+// Named per the roadmap. Returns the SGT ISO string for "now".
+export function getSingaporeTimestamp() {
+  return sgtNow().sgt;
+}
+
+export function sgtFromDate(date) {
+  // Build the wall-clock parts in SGT.
+  const parts = new Intl.DateTimeFormat('en-GB', {
+    timeZone: SGT,
+    year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', second: '2-digit',
+    hour12: false,
+  }).formatToParts(date).reduce((acc, p) => (acc[p.type] = p.value, acc), {});
+  const wall = `${parts.year}-${parts.month}-${parts.day}T${parts.hour}:${parts.minute}:${parts.second}`;
+  return {
+    // Canonical UTC instant for sorting / math.
+    utc: date.toISOString(),
+    // Human SGT wall clock.
+    sgt: `${wall}+08:00`,
+    date: `${parts.year}-${parts.month}-${parts.day}`, // SGT calendar day
+    label: `${parts.day}/${parts.month}/${parts.year} ${parts.hour}:${parts.minute} SGT`,
+  };
+}
+
+export function formatSgt(utcIso) {
+  return sgtFromDate(new Date(utcIso)).label;
+}
+
+export function sgtDay(utcIso) {
+  return sgtFromDate(new Date(utcIso)).date;
+}
+
+/* ------------------------------- Athletes -------------------------------- */
+
+export function getAthletes() {
+  const raw = localStorage.getItem(ATHLETE_KEY);
+  if (raw) return JSON.parse(raw);
+  const seed = [
+    { id: 'a1', name: 'Marcus Tan', romBaseline: 135 },
+    { id: 'a2', name: 'Priya Nair', romBaseline: 140 },
+    { id: 'a3', name: 'Devon Lee', romBaseline: 130 },
+  ];
+  localStorage.setItem(ATHLETE_KEY, JSON.stringify(seed));
+  return seed;
+}
+
+export function addAthlete(name, romBaseline) {
+  const athletes = getAthletes();
+  const athlete = { id: 'a' + Date.now(), name: name.trim(), romBaseline: Number(romBaseline) || 135 };
+  athletes.push(athlete);
+  localStorage.setItem(ATHLETE_KEY, JSON.stringify(athletes));
+  return athlete;
+}
+
+/* ------------------------------- Check-ins ------------------------------- */
+
+export function getCheckins() {
+  const raw = localStorage.getItem(STORAGE_KEY);
+  return raw ? JSON.parse(raw) : [];
+}
+
+// Accepts raw form inputs + the athlete (for ROM baseline) and persists a record
+// matching the design-document schema. `workload` and `rom_percentage` are
+// calculated and stored on the record; `timestamp` is an SGT ISO string.
+export function saveCheckin(input, athlete) {
+  const checkins = getCheckins();
+  const ts = sgtNow();
+  const baseline = athlete ? athlete.romBaseline : null;
+
+  const rom_percentage = input.goniometer_degrees != null
+    ? round(romPct(input.goniometer_degrees, baseline), 0) : null;
+  const workload = totalWorkload(input.srpe, input.duration_mins);
+
+  const entry = {
+    id: 'log_' + Date.now() + Math.floor(Math.random() * 1000),
+    timestamp: ts.sgt,          // SGT ISO string (design schema)
+    timestampUtc: ts.utc,       // canonical UTC instant for sorting/charts
+    sgtDay: ts.date,            // SGT calendar day for grouping
+    athleteId: input.athleteId,
+
+    // Body Mass & Hydration
+    pre_weight_kg: input.pre_weight_kg ?? null,
+    post_weight_kg: input.post_weight_kg ?? null,
+    thirst_score: input.thirst_score ?? null,
+
+    // ROM & Pain
+    joint_tested: input.joint_tested || null,
+    goniometer_degrees: input.goniometer_degrees ?? null,
+    rom_percentage,
+    pain_score: input.pain_score ?? null,
+    pain_location: input.pain_location || null,
+
+    // Load & Intensity
+    srpe: input.srpe ?? null,
+    intensity_level: input.intensity_level || null,
+    duration_mins: input.duration_mins ?? null,
+    workload,
+
+    // Sleep
+    sleep_hours: input.sleep_hours ?? null,
+    sleep_quality: input.sleep_quality ?? null,
+    sleep_tier: input.sleep_tier || null,
+
+    // Nutrition Log
+    nutrition_log: {
+      pre_workout_meal: input.nutrition_log?.pre_workout_meal || '',
+      post_workout_meal: input.nutrition_log?.post_workout_meal || '',
+      main_meal: input.nutrition_log?.main_meal || '',
+      quality_tags: input.nutrition_log?.quality_tags || [],
+      fueled_before_session: input.nutrition_log?.fueled_before_session === true,
+    },
+  };
+  checkins.push(entry);
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(checkins));
+  return entry;
+}
+
+function round(v, dp) {
+  if (v == null) return null;
+  const f = Math.pow(10, dp);
+  return Math.round(v * f) / f;
+}
+
+export function deleteCheckin(id) {
+  const checkins = getCheckins().filter((c) => c.id !== id);
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(checkins));
+}
+
+/* ------------------------- Coach status overrides ------------------------ */
+// A coach can manually override an athlete's auto-computed readiness tier.
+// Stored per athlete: { tier: 'Cleared'|'Modified'|'Restricted'|null, note, by }
+const OVERRIDE_KEY = 'eastside_fc_overrides_v1';
+
+export function getOverrides() {
+  const raw = localStorage.getItem(OVERRIDE_KEY);
+  return raw ? JSON.parse(raw) : {};
+}
+
+export function getOverride(athleteId) {
+  return getOverrides()[athleteId] || null;
+}
+
+export function setOverride(athleteId, tier, note) {
+  const all = getOverrides();
+  if (!tier) {
+    delete all[athleteId]; // clear override -> revert to auto
+  } else {
+    all[athleteId] = { tier, note: note || '', setAt: getSingaporeTimestamp() };
+  }
+  localStorage.setItem(OVERRIDE_KEY, JSON.stringify(all));
+}
+
+export function checkinsForAthlete(athleteId) {
+  return getCheckins()
+    .filter((c) => c.athleteId === athleteId)
+    .sort((a, b) => new Date(a.timestampUtc) - new Date(b.timestampUtc));
+}
+
+/* ----------------------------- Derived metrics --------------------------- */
+
+// Acute body-mass shift (%) = (pre - post) / pre * 100. Positive = fluid loss.
+export function fluidLossPct(pre, post) {
+  if (!pre || !post) return null;
+  return ((pre - post) / pre) * 100;
+}
+
+// Total internal workload = sRPE x duration(min).
+export function totalWorkload(srpe, durationMin) {
+  if (srpe == null || durationMin == null) return null;
+  return srpe * durationMin;
+}
+
+// ROM as a percentage of the athlete's baseline joint angle.
+export function romPct(angleDeg, baselineDeg) {
+  if (!angleDeg || !baselineDeg) return null;
+  return Math.max(0, Math.min(100, (angleDeg / baselineDeg) * 100));
+}
+
+export const INTENSITY_LEVELS = ['Technique', 'Conditioning', 'Sparring', 'Max Load'];
+export const HIGH_INTENSITY = ['Sparring', 'Max Load', 'Conditioning'];
+export const SLEEP_TIERS = ['Poor', 'Average', 'Restorative'];
+export const MEAL_WINDOWS = ['Pre-workout', 'Post-workout', 'Main meal'];
+export const MACRO_TAGS = ['High Protein', 'Adequate Carbs', 'Carbs for Recovery', 'Clean/Whole Foods', 'Fast Food'];
