@@ -21,7 +21,7 @@ function sleepDisplay(c) {
 import { evaluateAthlete, readinessTier, evaluateReadinessStatus, tierMeta } from './alerts.js';
 // NOTE: alerts.js import is placed above the helpers that use it (hoisted ES import).
 import {
-  romChart, painIntensityChart, hydrationChart, sleepChart, nutritionChart,
+  romChart, srpeChart, painChart, hydrationChart, sleepChart, nutritionChart,
 } from './charts.js';
 
 const root = document.getElementById('app');
@@ -601,7 +601,8 @@ function renderCharts(a, checkins) {
   const s = buildChartSeries(a, checkins);
   return `
     <div class="chart-card">${romChart(s.romSeries)}</div>
-    <div class="chart-card">${painIntensityChart(s.painSeries)}</div>
+    <div class="chart-card">${srpeChart(s.painSeries)}</div>
+    <div class="chart-card">${painChart(s.painSeries)}</div>
     <div class="chart-card">${hydrationChart(s.hydSeries)}</div>
     <div class="chart-card">${sleepChart(s.sleepSeries)}</div>
     <div class="chart-card">${nutritionChart(s.nutSeries)}</div>`;
