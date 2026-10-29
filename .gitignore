@@ -1,0 +1,13 @@
+# Dependencies (none required — app is zero-dependency)
+node_modules/
+
+# Local test scratch files
+_t.mjs
+*.log
+
+# OS / editor cruft
+.DS_Store
+Thumbs.db
+*.swp
+.idea/
+.vscode/
