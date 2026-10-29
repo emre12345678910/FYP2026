@@ -287,3 +287,11 @@ input:focus, select:focus { outline: none; border-color: var(--blue); }
 .water-log { margin-top: 16px; border-top: 1px solid var(--line); padding-top: 12px; }
 .water-log h3 { margin-bottom: 8px; }
 .water-log .data-table { max-width: 420px; }
+
+/* ----------------------------- Danger button ---------------------------- */
+.danger {
+  background: transparent; color: var(--red);
+  border: 1px solid var(--red); border-radius: 8px;
+  padding: 8px 14px; cursor: pointer; font-size: 13px; font-weight: 600;
+}
+.danger:hover { background: rgba(255, 93, 108, 0.12); }

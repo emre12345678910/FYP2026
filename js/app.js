@@ -1,6 +1,6 @@
 // app.js — UI controller for the Eastside FC Rehab & Monitoring App
 import {
-  getAthletes, addAthlete, updateAthlete, saveCheckin, deleteCheckin, checkinsForAthlete,
+  getAthletes, addAthlete, updateAthlete, deleteAthlete, saveCheckin, deleteCheckin, checkinsForAthlete,
   fluidLossPct, totalWorkload, romPct, sleepHoursBetween, sleepMinutesBetween, formatHoursMinutes, formatSgt, sgtDay,
   getOverride, setOverride,
   getHydrationToday, addBottle, removeBottle, DEFAULT_BOTTLE_ML,
@@ -202,6 +202,7 @@ function athleteView(athletes) {
           <select id="athlete-select">${opts}</select>
         </label>
         <button class="ghost" id="add-athlete">+ New athlete</button>
+        ${a ? `<button class="danger" id="delete-athlete" title="Delete this athlete and all their data">🗑 Delete profile</button>` : ''}
       </div>
     </div>
 
@@ -372,6 +373,17 @@ function bindAthleteForm() {
     // bottle capacity is set beside the hydration bar. Both use defaults here.
     const a = addAthlete({ name, gender, currentWeight, age });
     state.selectedAthlete = a.id;
+    render();
+  });
+
+  const deleteBtn = root.querySelector('#delete-athlete');
+  if (deleteBtn) deleteBtn.addEventListener('click', () => {
+    const a = athleteById(state.selectedAthlete);
+    if (!a) return;
+    if (!confirm(`Delete ${a.name}'s profile? This permanently removes all their check-ins, hydration logs and data. This cannot be undone.`)) return;
+    deleteAthlete(a.id);
+    const remaining = getAthletes();
+    state.selectedAthlete = remaining.length ? remaining[0].id : null;
     render();
   });
 
