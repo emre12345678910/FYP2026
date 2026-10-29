@@ -68,25 +68,38 @@ export function romChart(series) {
   );
 }
 
-/* 2. Pain & Intensity overlay — bars = sRPE, line = pain */
-export function painIntensityChart(series) {
-  // series: [{ label, srpe, pain }]
-  if (!series.length) return emptyChart('No session/pain data yet');
-  const labels = series.map((s) => s.label);
+/* 2a. sRPE training load — bar chart (one bar per day) */
+export function srpeChart(series) {
+  // series: [{ label, srpe }]
+  const data = series.filter((s) => s.srpe != null);
+  if (!data.length) return emptyChart('No session RPE data yet');
+  const labels = data.map((s) => s.label);
   const min = 0, max = 10;
   const inner = H - P.t - P.b;
-  const bw = Math.max(6, ((W - P.l - P.r) / series.length) * 0.5);
+  const bw = Math.max(6, ((W - P.l - P.r) / data.length) * 0.5);
   let bars = '';
-  series.forEach((s, i) => {
-    const x = scaleX(i, series.length);
-    const y = scaleY(s.srpe ?? 0, min, max);
+  data.forEach((s, i) => {
+    const x = scaleX(i, data.length);
+    const y = scaleY(s.srpe, min, max);
     bars += `<rect x="${x - bw / 2}" y="${y}" width="${bw}" height="${P.t + inner - y}" class="bar-srpe"/>`;
   });
-  const painPts = series.map((s, i) => ({ x: scaleX(i, series.length), y: scaleY(s.pain ?? 0, min, max) }));
-  const dots = painPts.map((p) => `<circle cx="${p.x}" cy="${p.y}" r="3" class="dot-red"/>`).join('');
   return svgWrap(
-    axes(min, max, labels, { yFmt: (v) => v.toFixed(0), title: 'sRPE (bars) vs Pain NPRS (line)' }) +
-    bars + `<path d="${path(painPts)}" class="line-red"/>` + dots
+    axes(min, max, labels, { yFmt: (v) => v.toFixed(0), title: 'Session RPE per Day (1–10)' }) + bars
+  );
+}
+
+/* 2b. Pain progression — line chart (NPRS per day) */
+export function painChart(series) {
+  // series: [{ label, pain }]
+  const data = series.filter((s) => s.pain != null);
+  if (!data.length) return emptyChart('No pain data yet');
+  const labels = data.map((s) => s.label);
+  const min = 0, max = 10;
+  const pts = data.map((s, i) => ({ x: scaleX(i, data.length), y: scaleY(s.pain, min, max) }));
+  const dots = pts.map((p) => `<circle cx="${p.x}" cy="${p.y}" r="3" class="dot-red"/>`).join('');
+  return svgWrap(
+    axes(min, max, labels, { yFmt: (v) => v.toFixed(0), title: 'Pain Progression — NPRS per Day (0–10)' }) +
+    `<path d="${path(pts)}" class="line-red"/>` + dots
   );
 }
 
@@ -126,12 +139,13 @@ export function sleepChart(series) {
   const min = 0;
   const max = Math.max(10, Math.ceil(Math.max(...series.map((s) => s.hours ?? 0))));
   const pts = series.map((s, i) => ({ x: scaleX(i, series.length), y: scaleY(s.hours ?? 0, min, max), hours: s.hours }));
-  const sixY = scaleY(6, min, max);
-  const dots = pts.map((p) => `<circle cx="${p.x}" cy="${p.y}" r="3" class="dot-${p.hours != null && p.hours < 6 ? 'yellow' : 'green'}"/>`).join('');
+  const eightY = scaleY(8, min, max);
+  // dots coloured against the >8h recommendation
+  const dots = pts.map((p) => `<circle cx="${p.x}" cy="${p.y}" r="3" class="dot-${p.hours == null ? 'green' : p.hours < 6 ? 'red' : p.hours < 8 ? 'yellow' : 'green'}"/>`).join('');
   return svgWrap(
     axes(min, max, labels, { yFmt: (v) => v.toFixed(0) + 'h', title: 'Sleep per Day (hours)' }) +
-    `<line x1="${P.l}" y1="${sixY}" x2="${W - P.r}" y2="${sixY}" class="threshold"/>` +
-    `<text x="${W - P.r}" y="${sixY - 4}" class="ann red">6h min</text>` +
+    `<line x1="${P.l}" y1="${eightY}" x2="${W - P.r}" y2="${eightY}" class="baseline"/>` +
+    `<text x="${W - P.r}" y="${eightY - 4}" class="ann">8h recommended</text>` +
     `<path d="${path(pts)}" class="line-green"/>` + dots
   );
 }
