@@ -4,6 +4,7 @@ import {
   fluidLossPct, totalWorkload, romPct, sleepHoursBetween, sleepMinutesBetween, formatHoursMinutes, formatSgt, sgtDay,
   getOverride, setOverride,
   getHydrationToday, addBottle, removeBottle, DEFAULT_BOTTLE_ML,
+  hydrationGoalMl, exerciseMinutesToday,
   INTENSITY_LEVELS, HIGH_INTENSITY, MACRO_TAGS,
 } from './store.js';
 
@@ -107,17 +108,35 @@ function athleteAlertBanner() {
   </section>`;
 }
 
-// Hydration tracker: a health-bar + bottle button (+1) for today's water intake.
+// Hydration tracker: a health-bar + bottle button (+1) + a timestamped log.
+// Daily goal is computed from body weight (30–40 ml/kg) plus today's exercise
+// (500–1000 ml per hour trained).
 function hydrationTracker() {
   if (!state.selectedAthlete) return '';
   const a = athleteById(state.selectedAthlete);
   if (!a) return '';
   const bottleMl = a.bottleMl || DEFAULT_BOTTLE_ML;
-  const goal = a.hydrationGoalMl || 3000;
+  const exMins = exerciseMinutesToday(a.id);
+  const g = hydrationGoalMl(a, exMins);
+  const goal = g.total;
   const today = getHydrationToday(a.id);
-  const pct = Math.min(100, Math.round((today.ml / goal) * 100));
+  const pct = goal > 0 ? Math.min(100, Math.round((today.ml / goal) * 100)) : 0;
   const goalReached = today.ml >= goal;
   const barCls = pct >= 100 ? 'full' : pct >= 50 ? 'ok' : 'low';
+
+  // Goal breakdown explainer
+  const goalExplain = g.weight
+    ? `Target = ${g.baseline} ml (${g.weight} kg × 35 ml/kg)` +
+      (g.exercise > 0 ? ` + ${g.exercise} ml (${g.exerciseHours.toFixed(1)} h exercise × 750 ml/h)` : '')
+    : 'Add a body weight to this athlete for a personalised target.';
+
+  // Timestamped water log (most recent first)
+  const logRows = (today.entries || []).slice().reverse().map((e, i, arr) => `
+    <tr>
+      <td>${arr.length - i}</td>
+      <td>${esc(e.label || e.sgt || '')}</td>
+      <td>+${e.ml} ml</td>
+    </tr>`).join('');
 
   return `
   <section class="panel hydration-panel">
@@ -128,7 +147,7 @@ function hydrationTracker() {
       </label>
     </div>
     <div class="hydration-row">
-      <button class="bottle-btn" id="bottle-add" title="Tap the bottle each time you finish it (+${bottleMl} ml)">
+      <button class="bottle-btn" id="bottle-add" title="Tap each time you finish a bottle (+${bottleMl} ml)">
         <span class="bottle-emoji">🍶</span>
         <span class="bottle-plus">+1</span>
       </button>
@@ -139,10 +158,21 @@ function hydrationTracker() {
         </div>
         <div class="hydration-meta">
           <span>${today.taps} bottle${today.taps === 1 ? '' : 's'} drunk today</span>
-          <button class="link-del" id="bottle-remove" ${today.taps === 0 ? 'disabled' : ''}>undo −1</button>
+          <button class="link-del" id="bottle-remove" ${today.taps === 0 ? 'disabled' : ''}>undo last</button>
           ${goalReached ? '<span class="pill ok">🎯 Goal reached!</span>' : ''}
         </div>
+        <div class="hydration-goal-explain muted small">${esc(goalExplain)}</div>
       </div>
+    </div>
+    <div class="water-log">
+      <h3>🕒 Water log — today</h3>
+      ${today.entries && today.entries.length ? `
+      <div class="table-wrap">
+        <table class="data-table">
+          <thead><tr><th>#</th><th>Time (SGT)</th><th>Amount</th></tr></thead>
+          <tbody>${logRows}</tbody>
+        </table>
+      </div>` : '<p class="muted">No water logged yet today — tap the bottle to start.</p>'}
     </div>
   </section>`;
 }
@@ -152,9 +182,13 @@ function athleteView(athletes) {
     `<option value="${a.id}" ${a.id === state.selectedAthlete ? 'selected' : ''}>${esc(a.name)}</option>`).join('');
 
   const a = athleteById(state.selectedAthlete);
-  const profile = a ? `<div class="athlete-profile muted small">
-      ${a.age != null ? `Age ${a.age}` : ''}${a.age != null && a.currentWeight != null ? ' · ' : ''}${a.currentWeight != null ? `${a.currentWeight} kg` : ''}
-    </div>` : '';
+  const profileBits = a ? [
+    a.gender,
+    a.age != null ? `Age ${a.age}` : null,
+    a.currentWeight != null ? `${a.currentWeight} kg` : null,
+  ].filter(Boolean) : [];
+  const profile = profileBits.length
+    ? `<div class="athlete-profile muted small">${profileBits.map(esc).join(' · ')}</div>` : '';
 
   return `
   ${athleteAlertBanner()}
@@ -326,11 +360,16 @@ function bindAthleteForm() {
   if (addBtn) addBtn.addEventListener('click', () => {
     const name = prompt('Athlete name?');
     if (!name) return;
+    let gender = prompt(`Gender for ${name}? (Male / Female)`, '');
+    if (gender) {
+      const g = gender.trim().toLowerCase();
+      gender = g.startsWith('m') ? 'Male' : g.startsWith('f') ? 'Female' : gender.trim();
+    }
     const currentWeight = prompt(`Current weight (kg) for ${name}?`, '');
     const age = prompt(`Age for ${name}?`, '');
     const baseline = prompt('Baseline ROM joint angle in degrees (e.g. 135)?', '135');
     const bottleMl = prompt('Water bottle capacity (ml)?', String(DEFAULT_BOTTLE_ML));
-    const a = addAthlete({ name, romBaseline: baseline, currentWeight, age, bottleMl });
+    const a = addAthlete({ name, gender, romBaseline: baseline, currentWeight, age, bottleMl });
     state.selectedAthlete = a.id;
     render();
   });
@@ -352,8 +391,7 @@ function bindAthleteForm() {
   });
   const removeBottleBtn = root.querySelector('#bottle-remove');
   if (removeBottleBtn) removeBottleBtn.addEventListener('click', () => {
-    const a = athleteById(state.selectedAthlete);
-    removeBottle(state.selectedAthlete, (a && a.bottleMl) || DEFAULT_BOTTLE_ML);
+    removeBottle(state.selectedAthlete);
     render();
   });
 
@@ -589,7 +627,7 @@ function coachDetail() {
   const ovNote = getOverride(a.id);
   return `
     <div class="detail-head">
-      <h2>${esc(a.name)} <span class="muted small">· baseline ROM ${a.romBaseline}°</span></h2>
+      <h2>${esc(a.name)} <span class="muted small">· ${[a.gender, a.age != null ? a.age + 'y' : null, a.currentWeight != null ? a.currentWeight + ' kg' : null, 'baseline ROM ' + a.romBaseline + '°'].filter(Boolean).map(esc).join(' · ')}</span></h2>
       <span class="tier big ${status.cls}">${status.icon} ${status.tier}${status.overridden ? ' ✎ override' : ''}</span>
     </div>
 
