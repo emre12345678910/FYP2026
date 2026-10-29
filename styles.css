@@ -265,3 +265,18 @@ input:focus, select:focus { outline: none; border-color: var(--blue); }
 .hydration-meta { display: flex; align-items: center; gap: 12px; margin-top: 8px; font-size: 13px; color: var(--muted); }
 .hydration-meta .link-del { color: var(--blue); }
 .hydration-meta .link-del[disabled] { color: var(--line); cursor: default; }
+
+/* ----------------------------- Sleep tracker ---------------------------- */
+.sleep-tracker { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 18px; }
+.sleep-times { display: flex; gap: 14px; }
+.time-row { display: flex; gap: 6px; align-items: center; }
+.time-row input[type="time"] { width: 120px; }
+.sleep-now { padding: 6px 10px; font-size: 12px; }
+.sleep-result {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  min-width: 120px; padding: 8px 14px; background: var(--panel-2);
+  border: 1px solid var(--line); border-radius: 10px;
+}
+.sleep-hours-label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .5px; }
+.sleep-hours-value { font-size: 24px; font-weight: 800; color: var(--blue); }
+.sleep-hours-value.short { color: var(--yellow); }

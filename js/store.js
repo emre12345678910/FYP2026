@@ -133,8 +133,8 @@ export function saveCheckin(input, athlete) {
 
     // Sleep
     sleep_hours: input.sleep_hours ?? null,
-    sleep_quality: input.sleep_quality ?? null,
-    sleep_tier: input.sleep_tier || null,
+    sleep_start: input.sleep_start || null,
+    sleep_end: input.sleep_end || null,
 
     // Nutrition Log
     nutrition_log: {
@@ -250,6 +250,18 @@ export function fluidLossPct(pre, post) {
 export function totalWorkload(srpe, durationMin) {
   if (srpe == null || durationMin == null) return null;
   return srpe * durationMin;
+}
+
+// Hours between a "slept at" and "woke at" time (HH:MM strings). Handles the
+// overnight case (wake time earlier than sleep time rolls to the next day).
+export function sleepHoursBetween(startHHMM, endHHMM) {
+  if (!startHHMM || !endHHMM) return null;
+  const [sh, sm] = startHHMM.split(':').map(Number);
+  const [eh, em] = endHHMM.split(':').map(Number);
+  if ([sh, sm, eh, em].some((n) => Number.isNaN(n))) return null;
+  let mins = (eh * 60 + em) - (sh * 60 + sm);
+  if (mins <= 0) mins += 24 * 60; // crossed midnight
+  return Math.round((mins / 60) * 10) / 10; // 1 decimal
 }
 
 // ROM as a percentage of the athlete's baseline joint angle.

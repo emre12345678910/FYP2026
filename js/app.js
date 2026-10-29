@@ -1,10 +1,10 @@
 // app.js — UI controller for the Eastside FC Rehab & Monitoring App
 import {
   getAthletes, addAthlete, updateAthlete, saveCheckin, deleteCheckin, checkinsForAthlete,
-  fluidLossPct, totalWorkload, romPct, formatSgt, sgtDay,
+  fluidLossPct, totalWorkload, romPct, sleepHoursBetween, formatSgt, sgtDay,
   getOverride, setOverride,
   getHydrationToday, addBottle, removeBottle, DEFAULT_BOTTLE_ML,
-  INTENSITY_LEVELS, HIGH_INTENSITY, SLEEP_TIERS, MACRO_TAGS,
+  INTENSITY_LEVELS, HIGH_INTENSITY, MACRO_TAGS,
 } from './store.js';
 
 // Athlete lookup helper (for ROM baseline access at render time).
@@ -172,8 +172,13 @@ function athleteView(athletes) {
 
       <fieldset>
         <legend>🔥 Training Load &amp; Intensity</legend>
-        <label>Session RPE (1–10)<input type="number" min="1" max="10" name="srpe"></label>
-        <label>Intensity level
+        <label>Session RPE (1–10)
+          <select name="srpe">
+            <option value="">—</option>
+            ${Array.from({ length: 10 }, (_, i) => i + 1).map((n) => `<option value="${n}">${n}</option>`).join('')}
+          </select>
+        </label>
+        <label>Type of training
           <select name="intensity_level">
             <option value="">—</option>
             ${INTENSITY_LEVELS.map((l) => `<option>${l}</option>`).join('')}
@@ -184,7 +189,12 @@ function athleteView(athletes) {
 
       <fieldset>
         <legend>🤕 Pain &amp; Injury</legend>
-        <label>Pain score NPRS (0–10)<input type="number" min="0" max="10" name="pain_score"></label>
+        <label>Pain score NPRS (0–10)
+          <select name="pain_score">
+            <option value="">—</option>
+            ${Array.from({ length: 11 }, (_, i) => i).map((n) => `<option value="${n}">${n}${n === 0 ? ' (no pain)' : ''}</option>`).join('')}
+          </select>
+        </label>
         <label>Pain location<input type="text" name="pain_location" placeholder="e.g. Left Ankle"></label>
       </fieldset>
 
@@ -197,14 +207,28 @@ function athleteView(athletes) {
 
       <fieldset>
         <legend>😴 Sleep</legend>
-        <label>Duration (hrs)<input type="number" step="0.5" min="0" max="24" name="sleep_hours"></label>
-        <label>Quality (1–10)<input type="number" min="1" max="10" name="sleep_quality"></label>
-        <label>Tier
-          <select name="sleep_tier">
-            <option value="">—</option>
-            ${SLEEP_TIERS.map((t) => `<option>${t}</option>`).join('')}
-          </select>
-        </label>
+        <div class="sleep-tracker">
+          <div class="sleep-times">
+            <label>Slept at
+              <div class="time-row">
+                <input type="time" name="sleep_start" id="sleep-start">
+                <button type="button" class="ghost sleep-now" data-target="sleep-start">now</button>
+              </div>
+            </label>
+            <label>Woke at
+              <div class="time-row">
+                <input type="time" name="sleep_end" id="sleep-end">
+                <button type="button" class="ghost sleep-now" data-target="sleep-end">now</button>
+              </div>
+            </label>
+          </div>
+          <div class="sleep-result">
+            <span class="sleep-hours-label">Sleep duration</span>
+            <span class="sleep-hours-value" id="sleep-hours-display">—</span>
+            <input type="hidden" name="sleep_hours" id="sleep-hours">
+          </div>
+        </div>
+        <small class="hint">Tap “now” at bedtime and again on waking — hours are calculated automatically (overnight supported).</small>
       </fieldset>
 
       <fieldset class="wide">
@@ -228,7 +252,24 @@ function athleteView(athletes) {
   </section>
 
   ${recentCheckins()}
+  ${athleteCharts()}
   `;
+}
+
+// "My Progress" — the athlete's own graphs & charts for all their metrics.
+function athleteCharts() {
+  if (!state.selectedAthlete) return '';
+  const a = athleteById(state.selectedAthlete);
+  if (!a) return '';
+  const checkins = checkinsForAthlete(a.id);
+  if (!checkins.length) {
+    return '<section class="panel"><h2>📊 My Progress</h2><p class="muted">Save a few check-ins to see your trends here.</p></section>';
+  }
+  return `
+  <section class="panel">
+    <h2>📊 My Progress <span class="muted small">· your personal trends across all metrics</span></h2>
+    <div class="charts">${renderCharts(a, checkins)}</div>
+  </section>`;
 }
 
 function recentCheckins() {
@@ -259,7 +300,7 @@ function recentCheckins() {
     <div class="table-wrap">
       <table class="data-table">
         <thead><tr>
-          <th>Timestamp (SGT)</th><th>Intensity</th><th>sRPE</th><th>Workload</th>
+          <th>Timestamp (SGT)</th><th>Training type</th><th>sRPE</th><th>Workload</th>
           <th>Pain</th><th>ROM%</th><th>Fluid loss</th><th>Sleep</th><th></th>
         </tr></thead>
         <tbody>${rows}</tbody>
@@ -310,6 +351,34 @@ function bindAthleteForm() {
   root.querySelectorAll('[data-del]').forEach((b) =>
     b.addEventListener('click', () => { deleteCheckin(b.dataset.del); render(); }));
 
+  // --- Sleep tracker: "now" buttons + live duration calculation ---
+  const sleepStart = root.querySelector('#sleep-start');
+  const sleepEnd = root.querySelector('#sleep-end');
+  const sleepHours = root.querySelector('#sleep-hours');
+  const sleepDisplay = root.querySelector('#sleep-hours-display');
+  function recalcSleep() {
+    if (!sleepStart || !sleepEnd) return;
+    const hrs = sleepHoursBetween(sleepStart.value, sleepEnd.value);
+    if (hrs != null) {
+      sleepHours.value = hrs;
+      sleepDisplay.textContent = `${hrs} h`;
+      sleepDisplay.classList.toggle('short', hrs < 6);
+    } else {
+      sleepHours.value = '';
+      sleepDisplay.textContent = '—';
+      sleepDisplay.classList.remove('short');
+    }
+  }
+  root.querySelectorAll('.sleep-now').forEach((b) =>
+    b.addEventListener('click', () => {
+      const target = root.querySelector('#' + b.dataset.target);
+      const now = new Date();
+      target.value = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+      recalcSleep();
+    }));
+  if (sleepStart) sleepStart.addEventListener('change', recalcSleep);
+  if (sleepEnd) sleepEnd.addEventListener('change', recalcSleep);
+
   const form = root.querySelector('#checkin-form');
   if (!form) return;
   form.addEventListener('submit', (e) => {
@@ -330,8 +399,8 @@ function bindAthleteForm() {
       intensity_level: str('intensity_level') || null,
       duration_mins: num('duration_mins'),
       sleep_hours: num('sleep_hours'),
-      sleep_quality: num('sleep_quality'),
-      sleep_tier: str('sleep_tier') || null,
+      sleep_start: str('sleep_start') || null,
+      sleep_end: str('sleep_end') || null,
       nutrition_log: {
         pre_workout_meal: str('pre_workout_meal'),
         post_workout_meal: str('post_workout_meal'),
@@ -346,6 +415,49 @@ function bindAthleteForm() {
     msg.classList.add('show');
     setTimeout(render, 700);
   });
+}
+
+/* --------------------- Shared analytics chart builders ------------------- */
+// Builds the five chart series objects from an athlete's check-ins.
+function buildChartSeries(a, checkins) {
+  const romSeries = checkins.filter((c) => c.rom_percentage != null || c.goniometer_degrees != null).map((c) => ({
+    label: sgtDay(c.timestampUtc).slice(5),
+    pct: c.rom_percentage != null ? c.rom_percentage : romPct(c.goniometer_degrees, a.romBaseline),
+  }));
+  const painSeries = checkins.filter((c) => c.srpe != null || c.pain_score != null).map((c) => ({
+    label: sgtDay(c.timestampUtc).slice(5), srpe: c.srpe, pain: c.pain_score,
+  }));
+  const hydSeries = checkins.filter((c) => c.pre_weight_kg != null || c.post_weight_kg != null).map((c) => ({
+    label: sgtDay(c.timestampUtc).slice(5), pre: c.pre_weight_kg, post: c.post_weight_kg,
+    lossPct: fluidLossPct(c.pre_weight_kg, c.post_weight_kg),
+  }));
+  const sleepPts = checkins.filter((c) => c.sleep_hours != null).map((c) => {
+    // Readiness proxy on a 0–10 scale derived from sleep duration (no quality field).
+    const readiness = Math.max(0, Math.min(10, Math.round((c.sleep_hours / 8) * 10)));
+    const tier = c.sleep_hours < 5 ? 'red' : c.sleep_hours < 6 ? 'yellow' : 'green';
+    return { hours: c.sleep_hours, quality: readiness, tier };
+  });
+  const nutSeries = checkins.filter((c) => c.srpe != null && c.duration_mins != null).map((c) => {
+    const nl = c.nutrition_log || {};
+    return {
+      label: sgtDay(c.timestampUtc).slice(5),
+      workload: c.workload,
+      fueled: !!(nl.pre_workout_meal && nl.pre_workout_meal.trim()) && nl.fueled_before_session === true,
+    };
+  });
+  return { romSeries, painSeries, hydSeries, sleepPts, nutSeries };
+}
+
+// Renders the five analytics charts for an athlete. Shared by the coach
+// dashboard and the athlete's own "My Progress" view.
+function renderCharts(a, checkins) {
+  const s = buildChartSeries(a, checkins);
+  return `
+    <div class="chart-card">${romChart(s.romSeries)}</div>
+    <div class="chart-card">${painIntensityChart(s.painSeries)}</div>
+    <div class="chart-card">${hydrationChart(s.hydSeries)}</div>
+    <div class="chart-card">${sleepMatrixChart(s.sleepPts)}</div>
+    <div class="chart-card">${nutritionChart(s.nutSeries)}</div>`;
 }
 
 /* ------------------------------ Coach view ------------------------------- */
@@ -409,33 +521,6 @@ function coachDetail() {
   const auto = readinessTier(checkins);          // auto-computed (rubric)
   const status = effectiveTier(a, checkins);     // override-aware display tier
 
-  // chart series
-  const romSeries = checkins.filter((c) => c.rom_percentage != null || c.goniometer_degrees != null).map((c) => ({
-    label: sgtDay(c.timestampUtc).slice(5),
-    pct: c.rom_percentage != null ? c.rom_percentage : romPct(c.goniometer_degrees, a.romBaseline),
-  }));
-  const painSeries = checkins.filter((c) => c.srpe != null || c.pain_score != null).map((c) => ({
-    label: sgtDay(c.timestampUtc).slice(5), srpe: c.srpe, pain: c.pain_score,
-  }));
-  const hydSeries = checkins.filter((c) => c.pre_weight_kg != null || c.post_weight_kg != null).map((c) => ({
-    label: sgtDay(c.timestampUtc).slice(5), pre: c.pre_weight_kg, post: c.post_weight_kg,
-    lossPct: fluidLossPct(c.pre_weight_kg, c.post_weight_kg),
-  }));
-  const sleepPts = checkins.filter((c) => c.sleep_hours != null).map((c) => {
-    const q = c.sleep_quality != null ? c.sleep_quality
-      : (c.sleep_tier === 'Restorative' ? 9 : c.sleep_tier === 'Average' ? 6 : c.sleep_tier === 'Poor' ? 3 : 5);
-    const tier = c.sleep_hours < 5 ? 'red' : c.sleep_hours < 6 ? 'yellow' : 'green';
-    return { hours: c.sleep_hours, quality: q, tier };
-  });
-  const nutSeries = checkins.filter((c) => c.srpe != null && c.duration_mins != null).map((c) => {
-    const nl = c.nutrition_log || {};
-    return {
-      label: sgtDay(c.timestampUtc).slice(5),
-      workload: c.workload,
-      fueled: !!(nl.pre_workout_meal && nl.pre_workout_meal.trim()) && nl.fueled_before_session === true,
-    };
-  });
-
   const alertList = alerts.length
     ? alerts.map((al) => `<li class="alert ${al.severity}"><span>${al.icon}</span>
         <div><strong>${esc(al.title)}</strong><br><span class="muted">${esc(al.detail)}</span></div></li>`).join('')
@@ -476,13 +561,7 @@ function coachDetail() {
     </div>
 
     <div class="detail-cols">
-      <div class="charts">
-        <div class="chart-card">${romChart(romSeries)}</div>
-        <div class="chart-card">${painIntensityChart(painSeries)}</div>
-        <div class="chart-card">${hydrationChart(hydSeries)}</div>
-        <div class="chart-card">${sleepMatrixChart(sleepPts)}</div>
-        <div class="chart-card">${nutritionChart(nutSeries)}</div>
-      </div>
+      <div class="charts">${renderCharts(a, checkins)}</div>
       <aside class="alerts-pane">
         <h3>🔔 Notifications &amp; Alerts</h3>
         <ul class="alert-list">${alertList}</ul>
@@ -505,7 +584,7 @@ function coachDetail() {
         <table class="data-table">
           <thead><tr>
             <th>SGT</th><th>Readiness</th><th>Pre/Post kg</th><th>Fluid%</th><th>sRPE</th><th>Intensity</th>
-            <th>Dur</th><th>Workload</th><th>Pain</th><th>Location</th><th>Joint / °</th><th>ROM%</th><th>Sleep</th><th>Qual</th>
+            <th>Dur</th><th>Workload</th><th>Pain</th><th>Location</th><th>Joint / °</th><th>ROM%</th><th>Sleep</th><th>Window</th>
           </tr></thead>
           <tbody>${rawRows(a, checkins)}</tbody>
         </table>
@@ -535,7 +614,7 @@ function rawRows(a, checkins) {
       <td>${esc(c.joint_tested || '—')}${c.goniometer_degrees != null ? ' · ' + c.goniometer_degrees + '°' : ''}</td>
       <td class="${rom != null && rom < 60 ? 'cell-red' : ''}">${rom != null ? rom.toFixed(0) + '%' : '—'}</td>
       <td class="${c.sleep_hours != null && c.sleep_hours < 6 ? 'cell-yellow' : ''}">${c.sleep_hours != null ? c.sleep_hours + 'h' : '—'}</td>
-      <td>${c.sleep_quality ?? (c.sleep_tier || '—')}</td>
+      <td>${c.sleep_start && c.sleep_end ? esc(c.sleep_start + '–' + c.sleep_end) : '—'}</td>
     </tr>`;
   }).join('');
 }
