@@ -54,19 +54,20 @@ export function getAthletes() {
   const raw = localStorage.getItem(ATHLETE_KEY);
   if (raw) return JSON.parse(raw);
   const seed = [
-    { id: 'a1', name: 'Marcus Tan', romBaseline: 135, currentWeight: 72.5, age: 24, bottleMl: 750, hydrationGoalMl: 3000 },
-    { id: 'a2', name: 'Priya Nair', romBaseline: 140, currentWeight: 61.0, age: 27, bottleMl: 600, hydrationGoalMl: 2500 },
-    { id: 'a3', name: 'Devon Lee', romBaseline: 130, currentWeight: 80.3, age: 22, bottleMl: 1000, hydrationGoalMl: 3500 },
+    { id: 'a1', name: 'Marcus Tan', gender: 'Male', romBaseline: 135, currentWeight: 72.5, age: 24, bottleMl: 750, hydrationGoalMl: 3000 },
+    { id: 'a2', name: 'Priya Nair', gender: 'Female', romBaseline: 140, currentWeight: 61.0, age: 27, bottleMl: 600, hydrationGoalMl: 2500 },
+    { id: 'a3', name: 'Devon Lee', gender: 'Male', romBaseline: 130, currentWeight: 80.3, age: 22, bottleMl: 1000, hydrationGoalMl: 3500 },
   ];
   localStorage.setItem(ATHLETE_KEY, JSON.stringify(seed));
   return seed;
 }
 
-export function addAthlete({ name, romBaseline, currentWeight, age, bottleMl }) {
+export function addAthlete({ name, gender, romBaseline, currentWeight, age, bottleMl }) {
   const athletes = getAthletes();
   const athlete = {
     id: 'a' + Date.now(),
     name: String(name).trim(),
+    gender: gender || null,
     romBaseline: Number(romBaseline) || 135,
     currentWeight: currentWeight != null && currentWeight !== '' ? Number(currentWeight) : null,
     age: age != null && age !== '' ? Number(age) : null,
@@ -202,41 +203,73 @@ function getHydrationStore() {
   return raw ? JSON.parse(raw) : {};
 }
 
-// Returns today's (SGT) hydration record for an athlete: { ml, taps }.
+// Normalises a stored record to the current shape ({ ml, taps, entries[] }),
+// tolerating older records that only had { ml, taps }.
+function normHydration(rec) {
+  if (!rec) return { ml: 0, taps: 0, entries: [] };
+  return { ml: rec.ml || 0, taps: rec.taps || 0, entries: rec.entries || [] };
+}
+
+// Returns today's (SGT) hydration record for an athlete:
+// { ml, taps, entries: [{ ml, sgt, utc, label }] }.
 export function getHydrationToday(athleteId) {
   const day = sgtNow().date;
   const store = getHydrationStore();
-  const rec = store[`${athleteId}|${day}`];
-  return rec ? { ...rec } : { ml: 0, taps: 0 };
+  return normHydration(store[`${athleteId}|${day}`]);
 }
 
-// Adds one bottle (bottleMl) to today's intake for the athlete. Returns the
-// updated record.
+// Adds one bottle (bottleMl) to today's intake, timestamping the tap (SGT).
 export function addBottle(athleteId, bottleMl) {
-  const day = sgtNow().date;
+  const ts = sgtNow();
   const store = getHydrationStore();
-  const key = `${athleteId}|${day}`;
-  const rec = store[key] || { ml: 0, taps: 0 };
-  rec.ml += Number(bottleMl) || 0;
+  const key = `${athleteId}|${ts.date}`;
+  const rec = normHydration(store[key]);
+  const ml = Number(bottleMl) || 0;
+  rec.ml += ml;
   rec.taps += 1;
-  rec.updatedSgt = sgtNow().sgt;
+  rec.entries.push({ ml, sgt: ts.sgt, utc: ts.utc, label: ts.label });
   store[key] = rec;
   localStorage.setItem(HYDRATION_KEY, JSON.stringify(store));
   return { ...rec };
 }
 
-// Removes one bottle (floor at zero) — lets an athlete undo an accidental tap.
-export function removeBottle(athleteId, bottleMl) {
+// Removes the most recent bottle for today (undo an accidental tap).
+export function removeBottle(athleteId) {
   const day = sgtNow().date;
   const store = getHydrationStore();
   const key = `${athleteId}|${day}`;
-  const rec = store[key] || { ml: 0, taps: 0 };
-  rec.ml = Math.max(0, rec.ml - (Number(bottleMl) || 0));
-  rec.taps = Math.max(0, rec.taps - 1);
-  rec.updatedSgt = sgtNow().sgt;
+  const rec = normHydration(store[key]);
+  if (rec.entries.length) {
+    const last = rec.entries.pop();
+    rec.ml = Math.max(0, rec.ml - (last.ml || 0));
+    rec.taps = Math.max(0, rec.taps - 1);
+  }
   store[key] = rec;
   localStorage.setItem(HYDRATION_KEY, JSON.stringify(store));
   return { ...rec };
+}
+
+// Daily hydration goal (ml) for an athlete:
+//   baseline  = 30–40 ml per kg of body weight  (we use the midpoint, 35)
+//   exercise  = 500–1000 ml per hour trained     (we use the midpoint, 750)
+// `exerciseMinutes` is today's total training time (sum of duration_mins).
+// Returns a breakdown so the UI can explain the number.
+export function hydrationGoalMl(athlete, exerciseMinutes = 0) {
+  const ML_PER_KG = 35;        // midpoint of 30–40
+  const ML_PER_EX_HOUR = 750;  // midpoint of 500–1000
+  const weight = athlete && athlete.currentWeight ? Number(athlete.currentWeight) : null;
+  const baseline = weight ? Math.round(weight * ML_PER_KG) : (athlete && athlete.hydrationGoalMl) || DEFAULT_HYDRATION_GOAL_ML;
+  const exerciseHours = (Number(exerciseMinutes) || 0) / 60;
+  const exercise = Math.round(exerciseHours * ML_PER_EX_HOUR);
+  return { total: baseline + exercise, baseline, exercise, exerciseHours, weight };
+}
+
+// Sum of today's (SGT) training minutes across an athlete's check-ins.
+export function exerciseMinutesToday(athleteId) {
+  const day = sgtNow().date;
+  return getCheckins()
+    .filter((c) => c.athleteId === athleteId && (c.sgtDay || sgtDay(c.timestampUtc)) === day)
+    .reduce((sum, c) => sum + (Number(c.duration_mins) || 0), 0);
 }
 
 /* ----------------------------- Derived metrics --------------------------- */

@@ -281,3 +281,9 @@ input:focus, select:focus { outline: none; border-color: var(--blue); }
 .sleep-hours-label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .5px; }
 .sleep-hours-value { font-size: 24px; font-weight: 800; color: var(--blue); }
 .sleep-hours-value.short { color: var(--yellow); }
+
+/* --------------------------- Hydration water log ------------------------ */
+.hydration-goal-explain { margin-top: 6px; }
+.water-log { margin-top: 16px; border-top: 1px solid var(--line); padding-top: 12px; }
+.water-log h3 { margin-bottom: 8px; }
+.water-log .data-table { max-width: 420px; }

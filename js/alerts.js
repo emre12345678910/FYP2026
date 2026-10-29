@@ -48,23 +48,27 @@ export function evaluateAthlete(athlete, checkins) {
     }
 
     // --- Sleep deprivation: < 6h warning ---
+    // Recommendation is >8h sleep. Below 8h is a warning; below 6h is acute.
     if (c.sleep_hours != null && c.sleep_hours < 6) {
-      alerts.push(mk('yellow', '🟡', 'Sleep deprivation',
-        `Only ${c.sleep_hours}h sleep logged (recommended ≥6h).`, c, athlete));
+      alerts.push(mk('red', '🔴', 'Acute sleep deprivation',
+        `Only ${c.sleep_hours}h sleep logged (recommended over 8h).`, c, athlete));
+    } else if (c.sleep_hours != null && c.sleep_hours < 8) {
+      alerts.push(mk('yellow', '🟡', 'Below sleep recommendation',
+        `${c.sleep_hours}h sleep logged (recommended over 8h).`, c, athlete));
     }
   });
 
-  // --- Sleep red alert: < 5h for 2 consecutive calendar days (SGT) ---
+  // --- Sleep red alert: < 6h for 2 consecutive calendar days (SGT) ---
   const byDay = groupSleepByDay(sorted);
   const days = Object.keys(byDay).sort();
   for (let i = 1; i < days.length; i++) {
     const d1 = byDay[days[i - 1]];
     const d2 = byDay[days[i]];
-    if (isNextDay(days[i - 1], days[i]) && d1 < 5 && d2 < 5) {
+    if (isNextDay(days[i - 1], days[i]) && d1 < 6 && d2 < 6) {
       alerts.push({
         severity: 'red', icon: '🔴',
         title: 'Severe sleep deprivation',
-        detail: `<5h sleep on consecutive days (${days[i - 1]}: ${d1}h, ${days[i]}: ${d2}h).`,
+        detail: `<6h sleep on consecutive days (${days[i - 1]}: ${d1}h, ${days[i]}: ${d2}h) · recommended over 8h.`,
         athleteId: athlete.id, checkinId: null,
       });
     }
@@ -103,16 +107,17 @@ export function evaluateReadinessStatus(log) {
   const sleep = log.sleep_hours;
   const fueled = log.nutrition_log ? log.nutrition_log.fueled_before_session : undefined;
 
+  // Sleep recommendation is over 8h: <6h is restrictive, <8h is a modifier.
   // RED TIER (Restricted)
   if ((pain != null && pain >= 6) ||
       (rom != null && rom <= 60) ||
-      (sleep != null && sleep < 5)) {
+      (sleep != null && sleep < 6)) {
     return 'RED';
   }
   // YELLOW TIER (Modified)
   if ((pain != null && pain >= 3) ||
       (rom != null && rom <= 80) ||
-      (sleep != null && sleep < 6.5) ||
+      (sleep != null && sleep < 8) ||
       fueled === false) {
     return 'YELLOW';
   }
