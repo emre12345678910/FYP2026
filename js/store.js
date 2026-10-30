@@ -107,6 +107,9 @@ export function saveCheckin(input, athlete) {
   const rom_percentage = input.goniometer_degrees != null
     ? round(romPct(input.goniometer_degrees, baseline), 0) : null;
   const workload = totalWorkload(input.srpe, input.duration_mins);
+  // Sweat rate uses today's logged water intake as fluids consumed.
+  const fluidsMl = input.athleteId ? getHydrationToday(input.athleteId).ml : 0;
+  const sweat_rate_lph = sweatRateLph(input.pre_weight_kg, input.post_weight_kg, input.duration_mins, fluidsMl);
 
   const entry = {
     id: 'log_' + Date.now() + Math.floor(Math.random() * 1000),
@@ -115,9 +118,8 @@ export function saveCheckin(input, athlete) {
     sgtDay: ts.date,            // SGT calendar day for grouping
     athleteId: input.athleteId,
 
-    // Body Mass & Hydration
-    pre_weight_kg: input.pre_weight_kg ?? null,
-    post_weight_kg: input.post_weight_kg ?? null,
+    // Body Mass (single recording, timestamped via `timestamp`/`timestampSgt`)
+    body_mass_kg: input.body_mass_kg ?? null,
 
     // ROM & Pain
     joint_tested: input.joint_tested || null,
@@ -130,11 +132,14 @@ export function saveCheckin(input, athlete) {
     pain_actions: input.pain_actions || null,
     pain_period: input.pain_period || null,
 
-    // Load & Intensity
+    // Load & Intensity (pre/post weigh-in + derived sweat rate live here now)
     srpe: input.srpe ?? null,
     intensity_level: input.intensity_level || null,
     duration_mins: input.duration_mins ?? null,
     workload,
+    pre_weight_kg: input.pre_weight_kg ?? null,
+    post_weight_kg: input.post_weight_kg ?? null,
+    sweat_rate_lph,
 
     // Sleep
     sleep_hours: input.sleep_hours ?? null,
@@ -315,6 +320,18 @@ export function fluidLossPct(pre, post) {
 export function totalWorkload(srpe, durationMin) {
   if (srpe == null || durationMin == null) return null;
   return srpe * durationMin;
+}
+
+// Sweat rate (litres per hour) for a session:
+//   (pre_kg - post_kg + fluids_litres) / duration_hours
+// 1 kg body-mass loss ≈ 1 L sweat. Adding fluids drunk during the session
+// gives true sweat loss. Returns L/h rounded to 2 dp, or null if not derivable.
+export function sweatRateLph(preKg, postKg, durationMin, fluidsMl = 0) {
+  if (preKg == null || postKg == null || !durationMin) return null;
+  const litresLost = (preKg - postKg) + ((Number(fluidsMl) || 0) / 1000);
+  const hours = durationMin / 60;
+  if (hours <= 0) return null;
+  return Math.round((litresLost / hours) * 100) / 100;
 }
 
 // Hours between a "slept at" and "woke at" time (HH:MM strings). Handles the

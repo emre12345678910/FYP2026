@@ -1,7 +1,7 @@
 // app.js — UI controller for the Eastside FC Rehab & Monitoring App
 import {
   getAthletes, addAthlete, updateAthlete, deleteAthlete, saveCheckin, deleteCheckin, checkinsForAthlete,
-  fluidLossPct, totalWorkload, romPct, sleepHoursBetween, sleepMinutesBetween, formatHoursMinutes, formatSgt, sgtDay,
+  fluidLossPct, totalWorkload, romPct, sweatRateLph, sleepHoursBetween, sleepMinutesBetween, formatHoursMinutes, formatSgt, sgtDay,
   getOverride, setOverride,
   getHydrationToday, addBottle, removeBottle, DEFAULT_BOTTLE_ML,
   hydrationGoalMl, exerciseMinutesToday,
@@ -271,8 +271,8 @@ function athleteView(athletes) {
     <form id="checkin-form" class="form-grid">
       <fieldset>
         <legend>⚖️ Body Mass</legend>
-        <label>Pre-session weight (kg)<input type="number" step="0.1" name="pre_weight_kg"></label>
-        <label>Post-session weight (kg)<input type="number" step="0.1" name="post_weight_kg"></label>
+        <label>Body mass (kg)<input type="number" step="0.1" name="body_mass_kg"></label>
+        <small class="hint">Each recording is auto-timestamped in SGT. See the Body Mass log below.</small>
       </fieldset>
 
       <fieldset>
@@ -289,7 +289,14 @@ function athleteView(athletes) {
             ${INTENSITY_LEVELS.map((l) => `<option>${l}</option>`).join('')}
           </select>
         </label>
-        <label>Duration (min)<input type="number" min="0" name="duration_mins"></label>
+        <label>Duration (min)<input type="number" min="0" name="duration_mins" id="duration-mins"></label>
+        <label>Pre-session weight (kg)<input type="number" step="0.1" name="pre_weight_kg" id="pre-weight"></label>
+        <label>Post-session weight (kg)<input type="number" step="0.1" name="post_weight_kg" id="post-weight"></label>
+        <div class="sweat-result">
+          <span class="sweat-label">Sweat rate</span>
+          <span class="sweat-value" id="sweat-rate-display">—</span>
+        </div>
+        <small class="hint">Sweat rate = (pre − post + water drunk today) ÷ hours trained.</small>
       </fieldset>
 
       <fieldset class="wide">
@@ -397,7 +404,35 @@ function athleteCharts() {
     <h2>📊 My Progress <span class="muted small">· your personal trends across all metrics</span></h2>
     <div class="charts">${renderCharts(a, checkins)}</div>
   </section>
+  ${bodyMassLog(checkins)}
   ${dietLog(checkins)}`;
+}
+
+// Timestamped Body Mass log — every body-mass recording with its SGT time.
+function bodyMassLog(checkins) {
+  const list = checkins.filter((c) => c.body_mass_kg != null).slice().reverse();
+  const rows = list.map((c, i) => {
+    const prev = list[i + 1]; // next in reversed list = earlier recording
+    const delta = prev && prev.body_mass_kg != null ? c.body_mass_kg - prev.body_mass_kg : null;
+    const deltaStr = delta == null ? '—'
+      : (delta === 0 ? '±0' : (delta > 0 ? '+' : '') + delta.toFixed(1)) + ' kg';
+    return `<tr>
+      <td>${esc(formatSgt(c.timestampUtc))}</td>
+      <td>${c.body_mass_kg} kg</td>
+      <td class="${delta != null && delta < 0 ? 'cell-yellow' : ''}">${deltaStr}</td>
+    </tr>`;
+  }).join('');
+  return `
+  <section class="panel">
+    <h3>⚖️ Body Mass log <span class="muted small">· every recording, timestamped (SGT)</span></h3>
+    ${list.length ? `
+    <div class="table-wrap">
+      <table class="data-table" style="max-width:480px">
+        <thead><tr><th>Time (SGT)</th><th>Body mass</th><th>Δ vs previous</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>` : '<p class="muted">No body-mass recordings yet. Enter a body mass in a check-in.</p>'}
+  </section>`;
 }
 
 // Timestamped diet / nutrition log sheet (most recent first). Shows each
@@ -572,6 +607,28 @@ function bindAthleteForm() {
   if (sleepStart) sleepStart.addEventListener('change', recalcSleep);
   if (sleepEnd) sleepEnd.addEventListener('change', recalcSleep);
 
+  // --- Live sweat-rate readout from pre/post weight + duration ---
+  const preW = root.querySelector('#pre-weight');
+  const postW = root.querySelector('#post-weight');
+  const durW = root.querySelector('#duration-mins');
+  const sweatDisplay = root.querySelector('#sweat-rate-display');
+  function recalcSweat() {
+    if (!sweatDisplay) return;
+    const pre = preW.value !== '' ? Number(preW.value) : null;
+    const post = postW.value !== '' ? Number(postW.value) : null;
+    const dur = durW.value !== '' ? Number(durW.value) : null;
+    const fluids = state.selectedAthlete ? getHydrationToday(state.selectedAthlete).ml : 0;
+    const rate = sweatRateLph(pre, post, dur, fluids);
+    if (rate != null) {
+      sweatDisplay.textContent = `${rate.toFixed(2)} L/h`;
+      sweatDisplay.classList.toggle('high', rate >= 1.5);
+    } else {
+      sweatDisplay.textContent = '—';
+      sweatDisplay.classList.remove('high');
+    }
+  }
+  [preW, postW, durW].forEach((el) => el && el.addEventListener('input', recalcSweat));
+
   // --- "How to treat injuries in the gym" reference table (modal) ---
   const treatLink = root.querySelector('#treat-injuries-link');
   if (treatLink) treatLink.addEventListener('click', (e) => {
@@ -593,6 +650,7 @@ function bindAthleteForm() {
 
     const input = {
       athleteId: state.selectedAthlete,
+      body_mass_kg: num('body_mass_kg'),
       pre_weight_kg: num('pre_weight_kg'),
       post_weight_kg: num('post_weight_kg'),
       joint_tested: str('joint_tested'),
@@ -824,7 +882,7 @@ function coachDetail() {
       <div class="table-wrap">
         <table class="data-table">
           <thead><tr>
-            <th>SGT</th><th>Readiness</th><th>Pre/Post kg</th><th>Fluid%</th><th>sRPE</th><th>Intensity</th>
+            <th>SGT</th><th>Readiness</th><th>Body mass</th><th>Pre/Post kg</th><th>Fluid%</th><th>Sweat</th><th>sRPE</th><th>Intensity</th>
             <th>Dur</th><th>Workload</th><th>Pain</th><th>Location</th><th>Joint / °</th><th>ROM%</th><th>Sleep</th><th>Window</th>
           </tr></thead>
           <tbody>${rawRows(a, checkins)}</tbody>
@@ -835,7 +893,7 @@ function coachDetail() {
 }
 
 function rawRows(a, checkins) {
-  if (!checkins.length) return '<tr><td colspan="14" class="muted">No data</td></tr>';
+  if (!checkins.length) return '<tr><td colspan="16" class="muted">No data</td></tr>';
   return checkins.slice().reverse().map((c) => {
     const loss = fluidLossPct(c.pre_weight_kg, c.post_weight_kg);
     const rom = c.rom_percentage;
@@ -844,8 +902,10 @@ function rawRows(a, checkins) {
     return `<tr>
       <td>${esc(formatSgt(c.timestampUtc))}</td>
       <td><span class="tier ${rt.cls}">${rt.icon} ${rt.tier}</span></td>
+      <td>${c.body_mass_kg != null ? c.body_mass_kg + ' kg' : '—'}</td>
       <td>${c.pre_weight_kg ?? '—'} / ${c.post_weight_kg ?? '—'}</td>
       <td class="${loss != null && loss > 2 ? 'cell-red' : ''}">${loss != null ? loss.toFixed(1) + '%' : '—'}</td>
+      <td>${c.sweat_rate_lph != null ? c.sweat_rate_lph.toFixed(2) + ' L/h' : '—'}</td>
       <td>${c.srpe ?? '—'}</td>
       <td>${esc(c.intensity_level || '—')}</td>
       <td>${c.duration_mins ?? '—'}</td>
