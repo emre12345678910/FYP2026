@@ -425,3 +425,13 @@ textarea:focus { outline: none; border-color: var(--blue); }
 .prog-delta { font-weight: 700; margin-left: 6px; }
 .prog-delta.up { color: var(--green); }
 .prog-delta.down { color: var(--red); }
+
+/* --------------------------- Export / Import ---------------------------- */
+.data-actions { display: flex; gap: 6px; }
+.data-actions .ghost { padding: 6px 10px; font-size: 12px; }
+.sync-note {
+  grid-column: 1 / -1;
+  background: rgba(78,161,255,.08); border: 1px solid var(--line); border-left: 3px solid var(--blue);
+  border-radius: 8px; padding: 8px 12px; font-size: 12px; color: var(--muted); margin-bottom: 4px;
+}
+.sync-note strong { color: var(--text); }

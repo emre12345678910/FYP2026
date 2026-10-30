@@ -5,6 +5,7 @@ import {
   getOverride, setOverride,
   getHydrationToday, addBottle, removeBottle, DEFAULT_BOTTLE_ML,
   hydrationGoalMl, exerciseMinutesToday,
+  exportData, importData,
   COMBAT_TYPES, INTENSITY_LEVELS, HIGH_INTENSITY, MACRO_TAGS, PAIN_SYMPTOMS,
 } from './store.js';
 
@@ -292,6 +293,11 @@ function render() {
         <button class="tab ${state.view === 'coach' ? 'active' : ''}" data-view="coach">Coach Dashboard</button>
       </nav>
       <div class="tz">🕒 SGT (UTC+8)</div>
+      <div class="data-actions">
+        <button class="ghost" id="export-data" title="Download all data as a file (to move to another device)">⬇ Export</button>
+        <button class="ghost" id="import-data" title="Load data from an exported file">⬆ Import</button>
+        <input type="file" accept="application/json,.json" id="import-file" hidden>
+      </div>
       ${profileChip(athletes)}
     </header>
     <main>${state.view === 'athlete' ? athleteView(athletes) : coachView(athletes)}</main>
@@ -310,6 +316,53 @@ function bindShell() {
   if (chip) chip.addEventListener('click', () => {
     if (state.selectedAthlete) openProfile(state.selectedAthlete);
   });
+
+  // --- Export: download all data as a JSON file ---
+  const exportBtn = root.querySelector('#export-data');
+  if (exportBtn) exportBtn.addEventListener('click', () => {
+    const bundle = exportData();
+    const blob = new Blob([JSON.stringify(bundle, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    const stamp = bundle.exportedAt.slice(0, 10);
+    a.href = url;
+    a.download = `eastside-fc-data-${stamp}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  });
+
+  // --- Import: load data from a file (ask replace vs merge) ---
+  const importBtn = root.querySelector('#import-data');
+  const importFile = root.querySelector('#import-file');
+  if (importBtn && importFile) {
+    importBtn.addEventListener('click', () => importFile.click());
+    importFile.addEventListener('change', () => {
+      const file = importFile.files && importFile.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = () => {
+        let bundle;
+        try { bundle = JSON.parse(reader.result); }
+        catch { alert('That file could not be read as JSON.'); return; }
+        const merge = confirm(
+          'Import data from this file.\n\n' +
+          'OK = MERGE (keep current data, add anything new from the file)\n' +
+          'Cancel = REPLACE (overwrite all data on this device with the file)'
+        );
+        try {
+          const res = importData(bundle, merge ? 'merge' : 'replace');
+          state.selectedAthlete = null;
+          alert(`Import complete (${res.mode}): ${res.athletes} athlete(s), ${res.checkins} check-in(s).`);
+          render();
+        } catch (e) {
+          alert('Import failed: ' + e.message);
+        } finally {
+          importFile.value = ''; // allow re-importing the same file
+        }
+      };
+      reader.readAsText(file);
+    });
+  }
 }
 
 /* ----------------------------- Athlete view ------------------------------ */
@@ -438,6 +491,9 @@ function athleteView(athletes) {
     </div>
 
     <form id="checkin-form" class="form-grid">
+      <div class="sync-note">
+        ℹ️ <strong>Data is stored on this device only</strong> (in this browser). To use your athletes on another device, click <strong>⬇ Export</strong> up top, then <strong>⬆ Import</strong> the file on the other device.
+      </div>
       <div class="body-mass-row">
         <fieldset class="body-mass-fieldset">
           <legend>⚖️ Body Mass</legend>
