@@ -341,3 +341,20 @@ textarea:focus { outline: none; border-color: var(--blue); }
 .sweat-label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .5px; }
 .sweat-value { font-size: 22px; font-weight: 800; color: var(--blue); }
 .sweat-value.high { color: var(--yellow); }
+
+/* --------------------- Body Mass section + inline log ------------------- */
+.body-mass-row {
+  grid-column: 1 / -1;
+  display: grid; grid-template-columns: minmax(220px, 1fr) 2fr; gap: 16px; align-items: start;
+}
+.body-mass-fieldset { margin: 0; }
+.body-mass-log-inline {
+  background: var(--panel-2); border: 1px solid var(--line);
+  border-radius: 10px; padding: 12px 14px;
+}
+.body-mass-log-inline .field-label { margin-bottom: 8px; }
+.body-mass-log-inline .data-table { font-size: 12px; }
+.body-mass-log-inline .table-wrap { max-height: 200px; overflow-y: auto; }
+@media (max-width: 760px) {
+  .body-mass-row { grid-template-columns: 1fr; }
+}
