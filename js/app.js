@@ -1,7 +1,7 @@
 // app.js — UI controller for the Eastside FC Rehab & Monitoring App
 import {
   getAthletes, addAthlete, updateAthlete, deleteAthlete, saveCheckin, deleteCheckin, checkinsForAthlete,
-  fluidLossPct, totalWorkload, romPct, sweatRateLph, sleepHoursBetween, sleepMinutesBetween, formatHoursMinutes, formatSgt, sgtDay,
+  fluidLossPct, totalWorkload, romPct, sweatRateLph, bpCategory, sleepHoursBetween, sleepMinutesBetween, formatHoursMinutes, formatSgt, sgtDay,
   getOverride, setOverride,
   getHydrationToday, addBottle, removeBottle, DEFAULT_BOTTLE_ML,
   hydrationGoalMl, exerciseMinutesToday,
@@ -281,6 +281,23 @@ function athleteView(athletes) {
         </div>
       </div>
 
+      <div class="body-mass-row">
+        <fieldset class="body-mass-fieldset">
+          <legend>🩺 Blood Pressure</legend>
+          <label>Systolic (mmHg)<input type="number" min="40" max="300" name="bp_systolic" id="bp-systolic" placeholder="e.g. 120"></label>
+          <label>Diastolic (mmHg)<input type="number" min="30" max="200" name="bp_diastolic" id="bp-diastolic" placeholder="e.g. 80"></label>
+          <div class="sweat-result">
+            <span class="sweat-label">Reading</span>
+            <span class="sweat-value" id="bp-category-display">—</span>
+          </div>
+          <small class="hint">Each reading is auto-timestamped in SGT and added to the log beside this.</small>
+        </fieldset>
+        <div class="body-mass-log-inline">
+          <span class="field-label">🩺 Blood Pressure log <span class="muted small">· timestamped (SGT)</span></span>
+          ${a ? bpLogTable(checkinsForAthlete(a.id)) : '<p class="muted">Select an athlete.</p>'}
+        </div>
+      </div>
+
       <fieldset>
         <legend>🔥 Training Load &amp; Intensity</legend>
         <label>Session RPE (1–10)
@@ -414,6 +431,27 @@ function athleteCharts() {
 }
 
 // Timestamped Body Mass log — every body-mass recording with its SGT time.
+// Table markup for the blood-pressure log (every reading, timestamped).
+function bpLogTable(checkins) {
+  const list = checkins.filter((c) => c.bp_systolic != null && c.bp_diastolic != null).slice().reverse();
+  if (!list.length) return '<p class="muted">No blood-pressure readings yet. Enter systolic & diastolic to start the log.</p>';
+  const rows = list.map((c) => {
+    const cat = bpCategory(c.bp_systolic, c.bp_diastolic);
+    return `<tr>
+      <td>${esc(formatSgt(c.timestampUtc))}</td>
+      <td>${c.bp_systolic}/${c.bp_diastolic} mmHg</td>
+      <td>${cat ? `<span class="tier ${cat.cls}">${cat.label}</span>` : '—'}</td>
+    </tr>`;
+  }).join('');
+  return `
+    <div class="table-wrap">
+      <table class="data-table">
+        <thead><tr><th>Time (SGT)</th><th>Reading</th><th>Category</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>`;
+}
+
 // Table markup for the body-mass log (every recording + delta vs previous).
 function bodyMassLogTable(checkins) {
   const list = checkins.filter((c) => c.body_mass_kg != null).slice().reverse();
@@ -632,6 +670,24 @@ function bindAthleteForm() {
   }
   [preW, postW, durW].forEach((el) => el && el.addEventListener('input', recalcSweat));
 
+  // --- Live blood-pressure category readout ---
+  const bpSys = root.querySelector('#bp-systolic');
+  const bpDia = root.querySelector('#bp-diastolic');
+  const bpDisplay = root.querySelector('#bp-category-display');
+  function recalcBp() {
+    if (!bpDisplay) return;
+    const cat = bpCategory(bpSys.value, bpDia.value);
+    bpDisplay.className = 'sweat-value';
+    if (cat) {
+      bpDisplay.textContent = cat.label;
+      if (cat.cls === 'red') bpDisplay.classList.add('bp-red');
+      else if (cat.cls === 'yellow') bpDisplay.classList.add('high');
+    } else {
+      bpDisplay.textContent = '—';
+    }
+  }
+  [bpSys, bpDia].forEach((el) => el && el.addEventListener('input', recalcBp));
+
   // --- "How to treat injuries in the gym" reference table (modal) ---
   const treatLink = root.querySelector('#treat-injuries-link');
   if (treatLink) treatLink.addEventListener('click', (e) => {
@@ -654,6 +710,8 @@ function bindAthleteForm() {
     const input = {
       athleteId: state.selectedAthlete,
       body_mass_kg: num('body_mass_kg'),
+      bp_systolic: num('bp_systolic'),
+      bp_diastolic: num('bp_diastolic'),
       pre_weight_kg: num('pre_weight_kg'),
       post_weight_kg: num('post_weight_kg'),
       joint_tested: str('joint_tested'),
@@ -885,7 +943,7 @@ function coachDetail() {
       <div class="table-wrap">
         <table class="data-table">
           <thead><tr>
-            <th>SGT</th><th>Readiness</th><th>Body mass</th><th>Pre/Post kg</th><th>Fluid%</th><th>Sweat</th><th>sRPE</th><th>Intensity</th>
+            <th>SGT</th><th>Readiness</th><th>Body mass</th><th>BP (mmHg)</th><th>Pre/Post kg</th><th>Fluid%</th><th>Sweat</th><th>sRPE</th><th>Intensity</th>
             <th>Dur</th><th>Workload</th><th>Pain</th><th>Location</th><th>Joint / °</th><th>ROM%</th><th>Sleep</th><th>Window</th>
           </tr></thead>
           <tbody>${rawRows(a, checkins)}</tbody>
@@ -896,7 +954,7 @@ function coachDetail() {
 }
 
 function rawRows(a, checkins) {
-  if (!checkins.length) return '<tr><td colspan="16" class="muted">No data</td></tr>';
+  if (!checkins.length) return '<tr><td colspan="17" class="muted">No data</td></tr>';
   return checkins.slice().reverse().map((c) => {
     const loss = fluidLossPct(c.pre_weight_kg, c.post_weight_kg);
     const rom = c.rom_percentage;
@@ -906,6 +964,7 @@ function rawRows(a, checkins) {
       <td>${esc(formatSgt(c.timestampUtc))}</td>
       <td><span class="tier ${rt.cls}">${rt.icon} ${rt.tier}</span></td>
       <td>${c.body_mass_kg != null ? c.body_mass_kg + ' kg' : '—'}</td>
+      <td>${(() => { if (c.bp_systolic == null || c.bp_diastolic == null) return '—'; const cat = bpCategory(c.bp_systolic, c.bp_diastolic); return `<span class="${cat && cat.cls !== 'green' ? (cat.cls === 'red' ? 'cell-red' : 'cell-yellow') : ''}">${c.bp_systolic}/${c.bp_diastolic}</span>`; })()}</td>
       <td>${c.pre_weight_kg ?? '—'} / ${c.post_weight_kg ?? '—'}</td>
       <td class="${loss != null && loss > 2 ? 'cell-red' : ''}">${loss != null ? loss.toFixed(1) + '%' : '—'}</td>
       <td>${c.sweat_rate_lph != null ? c.sweat_rate_lph.toFixed(2) + ' L/h' : '—'}</td>
