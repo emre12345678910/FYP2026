@@ -377,13 +377,10 @@ textarea:focus { outline: none; border-color: var(--blue); }
 .avatar-lg .avatar-emoji { font-size: 52px; }
 .av-boxer { border-color: var(--accent); }
 .av-muaythai { border-color: var(--accent-2); }
-.av-fighter { border-color: var(--blue); }
 .av-champ { border-color: var(--yellow); }
-/* bobbing + jab animation for the built-in fighters */
+/* single standard bobbing animation for every built-in avatar */
 .avatar.animated .avatar-emoji { display: inline-block; animation: bob 1.4s ease-in-out infinite; }
-.av-boxer.animated .avatar-emoji { animation: jab 1.1s ease-in-out infinite; }
 @keyframes bob { 0%,100% { transform: translateY(0) rotate(0); } 50% { transform: translateY(-3px) rotate(-6deg); } }
-@keyframes jab { 0%,100% { transform: translateX(0) rotate(0); } 40% { transform: translateX(3px) rotate(8deg); } 60% { transform: translateX(-2px); } }
 
 /* ----------------------------- Profile chip ----------------------------- */
 .profile-chip {
