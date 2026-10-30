@@ -331,3 +331,13 @@ textarea:focus { outline: none; border-color: var(--blue); }
 .injury-table td { white-space: normal; vertical-align: top; max-width: 300px; }
 .injury-table th:first-child, .injury-table td:first-child { font-weight: 600; }
 .modal-note { margin-top: 12px; }
+
+/* ----------------------------- Sweat rate readout ----------------------- */
+.sweat-result {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  min-width: 110px; padding: 8px 14px; background: var(--panel-2);
+  border: 1px solid var(--line); border-radius: 10px;
+}
+.sweat-label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .5px; }
+.sweat-value { font-size: 22px; font-weight: 800; color: var(--blue); }
+.sweat-value.high { color: var(--yellow); }
