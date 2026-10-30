@@ -269,11 +269,17 @@ function athleteView(athletes) {
     </div>
 
     <form id="checkin-form" class="form-grid">
-      <fieldset>
-        <legend>⚖️ Body Mass</legend>
-        <label>Body mass (kg)<input type="number" step="0.1" name="body_mass_kg"></label>
-        <small class="hint">Each recording is auto-timestamped in SGT. See the Body Mass log below.</small>
-      </fieldset>
+      <div class="body-mass-row">
+        <fieldset class="body-mass-fieldset">
+          <legend>⚖️ Body Mass</legend>
+          <label>Body mass (kg)<input type="number" step="0.1" name="body_mass_kg"></label>
+          <small class="hint">Each recording is auto-timestamped in SGT and added to the log beside this.</small>
+        </fieldset>
+        <div class="body-mass-log-inline">
+          <span class="field-label">⚖️ Body Mass log <span class="muted small">· timestamped (SGT)</span></span>
+          ${a ? bodyMassLogTable(checkinsForAthlete(a.id)) : '<p class="muted">Select an athlete.</p>'}
+        </div>
+      </div>
 
       <fieldset>
         <legend>🔥 Training Load &amp; Intensity</legend>
@@ -404,13 +410,14 @@ function athleteCharts() {
     <h2>📊 My Progress <span class="muted small">· your personal trends across all metrics</span></h2>
     <div class="charts">${renderCharts(a, checkins)}</div>
   </section>
-  ${bodyMassLog(checkins)}
   ${dietLog(checkins)}`;
 }
 
 // Timestamped Body Mass log — every body-mass recording with its SGT time.
-function bodyMassLog(checkins) {
+// Table markup for the body-mass log (every recording + delta vs previous).
+function bodyMassLogTable(checkins) {
   const list = checkins.filter((c) => c.body_mass_kg != null).slice().reverse();
+  if (!list.length) return '<p class="muted">No body-mass recordings yet. Enter a body mass to start the log.</p>';
   const rows = list.map((c, i) => {
     const prev = list[i + 1]; // next in reversed list = earlier recording
     const delta = prev && prev.body_mass_kg != null ? c.body_mass_kg - prev.body_mass_kg : null;
@@ -423,16 +430,12 @@ function bodyMassLog(checkins) {
     </tr>`;
   }).join('');
   return `
-  <section class="panel">
-    <h3>⚖️ Body Mass log <span class="muted small">· every recording, timestamped (SGT)</span></h3>
-    ${list.length ? `
     <div class="table-wrap">
-      <table class="data-table" style="max-width:480px">
-        <thead><tr><th>Time (SGT)</th><th>Body mass</th><th>Δ vs previous</th></tr></thead>
+      <table class="data-table">
+        <thead><tr><th>Time (SGT)</th><th>Body mass</th><th>Δ vs prev</th></tr></thead>
         <tbody>${rows}</tbody>
       </table>
-    </div>` : '<p class="muted">No body-mass recordings yet. Enter a body mass in a check-in.</p>'}
-  </section>`;
+    </div>`;
 }
 
 // Timestamped diet / nutrition log sheet (most recent first). Shows each
