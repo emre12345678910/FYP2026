@@ -341,6 +341,7 @@ textarea:focus { outline: none; border-color: var(--blue); }
 .sweat-label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .5px; }
 .sweat-value { font-size: 22px; font-weight: 800; color: var(--blue); }
 .sweat-value.high { color: var(--yellow); }
+.sweat-value.bp-red { color: var(--red); font-size: 17px; }
 
 /* --------------------- Body Mass section + inline log ------------------- */
 .body-mass-row {

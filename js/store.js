@@ -121,6 +121,10 @@ export function saveCheckin(input, athlete) {
     // Body Mass (single recording, timestamped via `timestamp`/`timestampSgt`)
     body_mass_kg: input.body_mass_kg ?? null,
 
+    // Vitals — Blood Pressure (mmHg), timestamped via the record's `timestamp`
+    bp_systolic: input.bp_systolic ?? null,
+    bp_diastolic: input.bp_diastolic ?? null,
+
     // ROM & Pain
     joint_tested: input.joint_tested || null,
     goniometer_degrees: input.goniometer_degrees ?? null,
@@ -332,6 +336,19 @@ export function sweatRateLph(preKg, postKg, durationMin, fluidsMl = 0) {
   const hours = durationMin / 60;
   if (hours <= 0) return null;
   return Math.round((litresLost / hours) * 100) / 100;
+}
+
+// Classifies a blood-pressure reading (mmHg) using common adult categories.
+// Returns { label, cls } where cls is green | yellow | red for colouring.
+export function bpCategory(systolic, diastolic) {
+  const s = Number(systolic), d = Number(diastolic);
+  if (!s || !d) return null;
+  if (s >= 180 || d >= 120) return { label: 'Hypertensive crisis', cls: 'red' };
+  if (s >= 140 || d >= 90) return { label: 'Hypertension stage 2', cls: 'red' };
+  if (s >= 130 || d >= 80) return { label: 'Hypertension stage 1', cls: 'yellow' };
+  if (s >= 120) return { label: 'Elevated', cls: 'yellow' };
+  if (s < 90 || d < 60) return { label: 'Low', cls: 'yellow' };
+  return { label: 'Normal', cls: 'green' };
 }
 
 // Hours between a "slept at" and "woke at" time (HH:MM strings). Handles the
