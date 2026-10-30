@@ -5,11 +5,173 @@ import {
   getOverride, setOverride,
   getHydrationToday, addBottle, removeBottle, DEFAULT_BOTTLE_ML,
   hydrationGoalMl, exerciseMinutesToday,
-  INTENSITY_LEVELS, HIGH_INTENSITY, MACRO_TAGS, PAIN_SYMPTOMS,
+  COMBAT_TYPES, INTENSITY_LEVELS, HIGH_INTENSITY, MACRO_TAGS, PAIN_SYMPTOMS,
 } from './store.js';
 
 // Athlete lookup helper (for ROM baseline access at render time).
 function athleteById(id) { return getAthletes().find((a) => a.id === id); }
+
+// Built-in animated avatars (CSS/emoji based — no external images needed).
+const AVATARS = {
+  boxer: { emoji: '🥊', label: 'Boxer', cls: 'av-boxer' },
+  muaythai: { emoji: '🦵', label: 'Muay Thai', cls: 'av-muaythai' },
+  fighter: { emoji: '🤺', label: 'Fighter', cls: 'av-fighter' },
+  champ: { emoji: '🏆', label: 'Champ', cls: 'av-champ' },
+};
+
+// Renders an athlete's avatar: an uploaded picture (data URL) if present,
+// otherwise a built-in animated avatar. `size` is a CSS size class suffix.
+function avatarMarkup(athlete, size = 'md') {
+  if (!athlete) return '';
+  if (athlete.avatarImage) {
+    return `<span class="avatar avatar-${size}"><img src="${athlete.avatarImage}" alt="" class="avatar-img"></span>`;
+  }
+  const av = AVATARS[athlete.avatar] || AVATARS.boxer;
+  return `<span class="avatar avatar-${size} ${av.cls} animated"><span class="avatar-emoji">${av.emoji}</span></span>`;
+}
+
+// Profile chip shown at the top right of the top bar. Click opens the profile.
+function profileChip(athletes) {
+  const a = athleteById(state.selectedAthlete) || athletes[0];
+  if (!a) return '';
+  return `
+    <button class="profile-chip" id="profile-chip" title="View / edit profile">
+      ${avatarMarkup(a, 'sm')}
+      <span class="profile-chip-name">${esc(a.name)}</span>
+      <span class="profile-chip-caret">▾</span>
+    </button>`;
+}
+
+// Opens the profile panel: avatar (editable) on top, stats + progression below.
+function openProfile(athleteId) {
+  const a = athleteById(athleteId);
+  if (!a) return;
+  const checkins = checkinsForAthlete(a.id);
+  const latest = checkins[checkins.length - 1];
+  const first = checkins[0];
+  const status = effectiveTier(a, checkins);
+
+  // Progression deltas (first -> latest) for a few key metrics.
+  const prog = [];
+  const pick = (label, pickFn, unit = '', better = 'up') => {
+    const fv = first ? pickFn(first) : null;
+    const lv = latest ? pickFn(latest) : null;
+    if (fv == null || lv == null) return;
+    const d = lv - fv;
+    const arrow = d === 0 ? '→' : d > 0 ? '▲' : '▼';
+    const good = d === 0 ? '' : ((d > 0 ? better === 'up' : better === 'down') ? 'up' : 'down');
+    prog.push(`<li><span>${label}</span><span class="prog-val">${fv}${unit} → ${lv}${unit} <span class="prog-delta ${good}">${arrow} ${Math.abs(Math.round(d * 10) / 10)}${unit}</span></span></li>`);
+  };
+  pick('ROM %', (c) => c.rom_percentage, '%', 'up');
+  pick('Pain (NPRS)', (c) => c.pain_score, '', 'down');
+  pick('Body mass', (c) => c.body_mass_kg, ' kg', 'up');
+  pick('Sleep', (c) => c.sleep_hours, ' h', 'up');
+
+  const avatarChoices = Object.entries(AVATARS).map(([key, av]) =>
+    `<button class="avatar-choice ${a.avatar === key && !a.avatarImage ? 'sel' : ''} ${av.cls} animated" data-avatar="${key}" title="${av.label}">
+       <span class="avatar-emoji">${av.emoji}</span>
+     </button>`).join('');
+
+  const stats = [
+    ['Combat', a.combatType || '—'],
+    ['Gender', a.gender || '—'],
+    ['Age', a.age != null ? a.age : '—'],
+    ['Weight', a.currentWeight != null ? a.currentWeight + ' kg' : '—'],
+    ['Baseline ROM', a.romBaseline + '°'],
+    ['Check-ins', checkins.length],
+    ['Status', `${status.icon} ${status.tier}`],
+    ['Last check-in', latest ? formatSgt(latest.timestampUtc) : '—'],
+  ].map(([k, v]) => `<div class="stat"><span class="stat-k">${k}</span><span class="stat-v">${esc(String(v))}</span></div>`).join('');
+
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+  overlay.innerHTML = `
+    <div class="modal profile-modal" role="dialog" aria-label="Athlete profile">
+      <div class="modal-head">
+        <h2>Profile</h2>
+        <button class="modal-close" aria-label="Close">✕</button>
+      </div>
+
+      <div class="profile-top">
+        ${avatarMarkup(a, 'lg')}
+        <div class="profile-id">
+          <div class="profile-name">${esc(a.name)}</div>
+          <div class="muted small">${[a.combatType, a.gender].filter(Boolean).map(esc).join(' · ') || '—'}</div>
+        </div>
+      </div>
+
+      <div class="avatar-editor">
+        <span class="field-label">Profile picture</span>
+        <div class="avatar-choices">
+          ${avatarChoices}
+          <label class="avatar-upload" title="Upload from your gallery">
+            📷 Upload
+            <input type="file" accept="image/*" id="avatar-upload-input" hidden>
+          </label>
+          ${a.avatarImage ? '<button class="avatar-remove" id="avatar-remove">Remove photo</button>' : ''}
+        </div>
+      </div>
+
+      <div class="profile-stats-wrap">
+        <span class="field-label">Stats</span>
+        <div class="profile-stats">${stats}</div>
+      </div>
+
+      <div class="profile-prog-wrap">
+        <span class="field-label">Progression <span class="muted small">(first → latest check-in)</span></span>
+        <ul class="profile-prog">${prog.length ? prog.join('') : '<li class="muted">Not enough check-ins yet.</li>'}</ul>
+      </div>
+    </div>`;
+
+  const close = () => overlay.remove();
+  overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
+  overlay.querySelector('.modal-close').addEventListener('click', close);
+
+  // Pick a built-in animated avatar
+  overlay.querySelectorAll('[data-avatar]').forEach((b) =>
+    b.addEventListener('click', () => {
+      updateAthlete(a.id, { avatar: b.dataset.avatar, avatarImage: null });
+      close(); render(); openProfile(a.id);
+    }));
+
+  // Upload a picture from the gallery (downscaled to a data URL)
+  const upload = overlay.querySelector('#avatar-upload-input');
+  if (upload) upload.addEventListener('change', () => {
+    const file = upload.files && upload.files[0];
+    if (!file) return;
+    downscaleImage(file, 240, (dataUrl) => {
+      updateAthlete(a.id, { avatarImage: dataUrl });
+      close(); render(); openProfile(a.id);
+    });
+  });
+
+  const removeBtn = overlay.querySelector('#avatar-remove');
+  if (removeBtn) removeBtn.addEventListener('click', () => {
+    updateAthlete(a.id, { avatarImage: null });
+    close(); render(); openProfile(a.id);
+  });
+
+  document.body.appendChild(overlay);
+}
+
+// Reads an image file, downscales it to a square-ish max dimension and returns
+// a compressed JPEG data URL (keeps localStorage small).
+function downscaleImage(file, maxDim, cb) {
+  const reader = new FileReader();
+  reader.onload = () => {
+    const img = new Image();
+    img.onload = () => {
+      const scale = Math.min(1, maxDim / Math.max(img.width, img.height));
+      const w = Math.round(img.width * scale), h = Math.round(img.height * scale);
+      const canvas = document.createElement('canvas');
+      canvas.width = w; canvas.height = h;
+      canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+      cb(canvas.toDataURL('image/jpeg', 0.8));
+    };
+    img.src = reader.result;
+  };
+  reader.readAsDataURL(file);
+}
 
 // Reference table: common Muay Thai / gym injuries — how they happen and how
 // to manage/prevent them. Shown in a modal from the Pain & Injury section.
@@ -129,7 +291,8 @@ function render() {
         <button class="tab ${state.view === 'athlete' ? 'active' : ''}" data-view="athlete">Athlete Check-in</button>
         <button class="tab ${state.view === 'coach' ? 'active' : ''}" data-view="coach">Coach Dashboard</button>
       </nav>
-      <div class="tz">🕒 Auto-timestamped · Singapore Time (SGT, UTC+8)</div>
+      <div class="tz">🕒 SGT (UTC+8)</div>
+      ${profileChip(athletes)}
     </header>
     <main>${state.view === 'athlete' ? athleteView(athletes) : coachView(athletes)}</main>
   `;
@@ -142,6 +305,11 @@ function render() {
 function bindShell() {
   root.querySelectorAll('.tab').forEach((b) =>
     b.addEventListener('click', () => { state.view = b.dataset.view; render(); }));
+
+  const chip = root.querySelector('#profile-chip');
+  if (chip) chip.addEventListener('click', () => {
+    if (state.selectedAthlete) openProfile(state.selectedAthlete);
+  });
 }
 
 /* ----------------------------- Athlete view ------------------------------ */
@@ -245,6 +413,7 @@ function athleteView(athletes) {
 
   const a = athleteById(state.selectedAthlete);
   const profileBits = a ? [
+    a.combatType,
     a.gender,
     a.age != null ? `Age ${a.age}` : null,
     a.currentWeight != null ? `${a.currentWeight} kg` : null,
@@ -565,11 +734,16 @@ function bindAthleteForm() {
       const g = gender.trim().toLowerCase();
       gender = g.startsWith('m') ? 'Male' : g.startsWith('f') ? 'Female' : gender.trim();
     }
+    let combatType = prompt(`Type of combat for ${name}? (Boxing / Muay Thai)`, '');
+    if (combatType) {
+      const c = combatType.trim().toLowerCase();
+      combatType = c.startsWith('b') ? 'Boxing' : c.startsWith('m') ? 'Muay Thai' : combatType.trim();
+    }
     const currentWeight = prompt(`Current weight (kg) for ${name}?`, '');
     const age = prompt(`Age for ${name}?`, '');
     // Baseline ROM is set from the check-in form (below the ROM inputs);
     // bottle capacity is set beside the hydration bar. Both use defaults here.
-    const a = addAthlete({ name, gender, currentWeight, age });
+    const a = addAthlete({ name, gender, combatType, currentWeight, age });
     state.selectedAthlete = a.id;
     render();
   });
@@ -904,7 +1078,7 @@ function coachDetail() {
   const ovNote = getOverride(a.id);
   return `
     <div class="detail-head">
-      <h2>${esc(a.name)} <span class="muted small">· ${[a.gender, a.age != null ? a.age + 'y' : null, a.currentWeight != null ? a.currentWeight + ' kg' : null, 'baseline ROM ' + a.romBaseline + '°'].filter(Boolean).map(esc).join(' · ')}</span></h2>
+      <h2>${avatarMarkup(a, 'sm')} ${esc(a.name)} <span class="muted small">· ${[a.combatType, a.gender, a.age != null ? a.age + 'y' : null, a.currentWeight != null ? a.currentWeight + ' kg' : null, 'baseline ROM ' + a.romBaseline + '°'].filter(Boolean).map(esc).join(' · ')}</span></h2>
       <span class="tier big ${status.cls}">${status.icon} ${status.tier}${status.overridden ? ' ✎ override' : ''}</span>
     </div>
 

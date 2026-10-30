@@ -54,20 +54,22 @@ export function getAthletes() {
   const raw = localStorage.getItem(ATHLETE_KEY);
   if (raw) return JSON.parse(raw);
   const seed = [
-    { id: 'a1', name: 'Marcus Tan', gender: 'Male', romBaseline: 135, currentWeight: 72.5, age: 24, bottleMl: 750, hydrationGoalMl: 3000 },
-    { id: 'a2', name: 'Priya Nair', gender: 'Female', romBaseline: 140, currentWeight: 61.0, age: 27, bottleMl: 600, hydrationGoalMl: 2500 },
-    { id: 'a3', name: 'Devon Lee', gender: 'Male', romBaseline: 130, currentWeight: 80.3, age: 22, bottleMl: 1000, hydrationGoalMl: 3500 },
+    { id: 'a1', name: 'Marcus Tan', gender: 'Male', combatType: 'Boxing', avatar: 'boxer', romBaseline: 135, currentWeight: 72.5, age: 24, bottleMl: 750, hydrationGoalMl: 3000 },
+    { id: 'a2', name: 'Priya Nair', gender: 'Female', combatType: 'Muay Thai', avatar: 'muaythai', romBaseline: 140, currentWeight: 61.0, age: 27, bottleMl: 600, hydrationGoalMl: 2500 },
+    { id: 'a3', name: 'Devon Lee', gender: 'Male', combatType: 'Muay Thai', avatar: 'boxer', romBaseline: 130, currentWeight: 80.3, age: 22, bottleMl: 1000, hydrationGoalMl: 3500 },
   ];
   localStorage.setItem(ATHLETE_KEY, JSON.stringify(seed));
   return seed;
 }
 
-export function addAthlete({ name, gender, romBaseline, currentWeight, age, bottleMl }) {
+export function addAthlete({ name, gender, combatType, romBaseline, currentWeight, age, bottleMl }) {
   const athletes = getAthletes();
   const athlete = {
     id: 'a' + Date.now() + Math.floor(Math.random() * 100000),
     name: String(name).trim(),
     gender: gender || null,
+    combatType: combatType || null,
+    avatar: 'boxer', // default built-in avatar; editable via the profile panel
     romBaseline: Number(romBaseline) || 135,
     currentWeight: currentWeight != null && currentWeight !== '' ? Number(currentWeight) : null,
     age: age != null && age !== '' ? Number(age) : null,
@@ -386,6 +388,7 @@ export function romPct(angleDeg, baselineDeg) {
   return Math.max(0, Math.min(100, (angleDeg / baselineDeg) * 100));
 }
 
+export const COMBAT_TYPES = ['Boxing', 'Muay Thai'];
 export const INTENSITY_LEVELS = ['Technique', 'Conditioning', 'Sparring', 'Max Load'];
 export const HIGH_INTENSITY = ['Sparring', 'Max Load', 'Conditioning'];
 export const SLEEP_TIERS = ['Poor', 'Average', 'Restorative'];
