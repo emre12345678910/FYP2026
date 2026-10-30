@@ -16,7 +16,6 @@ function athleteById(id) { return getAthletes().find((a) => a.id === id); }
 const AVATARS = {
   boxer: { emoji: '🥊', label: 'Boxer', cls: 'av-boxer' },
   muaythai: { emoji: '🦵', label: 'Muay Thai', cls: 'av-muaythai' },
-  fighter: { emoji: '🤺', label: 'Fighter', cls: 'av-fighter' },
   champ: { emoji: '🏆', label: 'Champ', cls: 'av-champ' },
 };
 
