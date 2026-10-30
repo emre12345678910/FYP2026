@@ -125,6 +125,10 @@ export function saveCheckin(input, athlete) {
     rom_percentage,
     pain_score: input.pain_score ?? null,
     pain_location: input.pain_location || null,
+    pain_symptoms: input.pain_symptoms || [],
+    pain_description: input.pain_description || null,
+    pain_actions: input.pain_actions || null,
+    pain_period: input.pain_period || null,
 
     // Load & Intensity
     srpe: input.srpe ?? null,
@@ -353,3 +357,13 @@ export const HIGH_INTENSITY = ['Sparring', 'Max Load', 'Conditioning'];
 export const SLEEP_TIERS = ['Poor', 'Average', 'Restorative'];
 export const MEAL_WINDOWS = ['Pre-workout', 'Post-workout', 'Main meal'];
 export const MACRO_TAGS = ['High Protein', 'Adequate Carbs', 'Carbs for Recovery', 'Clean/Whole Foods', 'Fast Food'];
+
+// Selectable pain/injury symptoms (checkbox list at the top of the section).
+export const PAIN_SYMPTOMS = [
+  'General dull muscle tightness / stiffness / fatigue',
+  'Sharp / sudden pain during movement',
+  'Localised joint swelling',
+  'Visible instability',
+  'Radiating numbness',
+  'Head knock with dizziness / confusion',
+];
