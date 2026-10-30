@@ -378,6 +378,14 @@ textarea:focus { outline: none; border-color: var(--blue); }
 .av-boxer { border-color: var(--accent); }
 .av-muaythai { border-color: var(--accent-2); }
 .av-champ { border-color: var(--yellow); }
+.av-fighterm { border-color: var(--blue); }
+.av-fighterf { border-color: #ff7bbf; }
+.av-fire { border-color: #ff6a3d; }
+.av-flex { border-color: var(--green); }
+.av-medal { border-color: #e9c46a; }
+.av-tiger { border-color: #f4a261; }
+.av-dragon { border-color: #2a9d8f; }
+.av-belt { border-color: #b39ddb; }
 /* single standard bobbing animation for every built-in avatar */
 .avatar.animated .avatar-emoji { display: inline-block; animation: bob 1.4s ease-in-out infinite; }
 @keyframes bob { 0%,100% { transform: translateY(0) rotate(0); } 50% { transform: translateY(-3px) rotate(-6deg); } }
