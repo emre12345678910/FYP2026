@@ -17,6 +17,14 @@ const AVATARS = {
   boxer: { emoji: '🥊', label: 'Boxer', cls: 'av-boxer' },
   muaythai: { emoji: '🦵', label: 'Muay Thai', cls: 'av-muaythai' },
   champ: { emoji: '🏆', label: 'Champ', cls: 'av-champ' },
+  fighterm: { emoji: '🧑‍🦱', label: 'Fighter', cls: 'av-fighterm' },
+  fighterf: { emoji: '👩‍🦰', label: 'Fighter (F)', cls: 'av-fighterf' },
+  fire: { emoji: '🔥', label: 'On Fire', cls: 'av-fire' },
+  flex: { emoji: '💪', label: 'Flex', cls: 'av-flex' },
+  medal: { emoji: '🥇', label: 'Gold', cls: 'av-medal' },
+  tiger: { emoji: '🐯', label: 'Tiger', cls: 'av-tiger' },
+  dragon: { emoji: '🐉', label: 'Dragon', cls: 'av-dragon' },
+  belt: { emoji: '🎽', label: 'Belt', cls: 'av-belt' },
 };
 
 // Renders an athlete's avatar: an uploaded picture (data URL) if present,
