@@ -359,3 +359,69 @@ textarea:focus { outline: none; border-color: var(--blue); }
 @media (max-width: 760px) {
   .body-mass-row { grid-template-columns: 1fr; }
 }
+
+/* ------------------------------- Avatars -------------------------------- */
+.avatar {
+  display: inline-flex; align-items: center; justify-content: center;
+  border-radius: 50%; overflow: hidden; flex: 0 0 auto;
+  background: linear-gradient(135deg, #243447, #1a222c);
+  border: 2px solid var(--line);
+}
+.avatar-sm { width: 30px; height: 30px; }
+.avatar-md { width: 56px; height: 56px; }
+.avatar-lg { width: 96px; height: 96px; border-width: 3px; }
+.avatar-img { width: 100%; height: 100%; object-fit: cover; }
+.avatar-emoji { line-height: 1; }
+.avatar-sm .avatar-emoji { font-size: 16px; }
+.avatar-md .avatar-emoji { font-size: 30px; }
+.avatar-lg .avatar-emoji { font-size: 52px; }
+.av-boxer { border-color: var(--accent); }
+.av-muaythai { border-color: var(--accent-2); }
+.av-fighter { border-color: var(--blue); }
+.av-champ { border-color: var(--yellow); }
+/* bobbing + jab animation for the built-in fighters */
+.avatar.animated .avatar-emoji { display: inline-block; animation: bob 1.4s ease-in-out infinite; }
+.av-boxer.animated .avatar-emoji { animation: jab 1.1s ease-in-out infinite; }
+@keyframes bob { 0%,100% { transform: translateY(0) rotate(0); } 50% { transform: translateY(-3px) rotate(-6deg); } }
+@keyframes jab { 0%,100% { transform: translateX(0) rotate(0); } 40% { transform: translateX(3px) rotate(8deg); } 60% { transform: translateX(-2px); } }
+
+/* ----------------------------- Profile chip ----------------------------- */
+.profile-chip {
+  display: flex; align-items: center; gap: 8px; margin-left: 12px;
+  background: var(--panel-2); border: 1px solid var(--line); border-radius: 999px;
+  padding: 4px 12px 4px 4px; cursor: pointer; color: var(--text); font-weight: 600; font-size: 13px;
+}
+.profile-chip:hover { border-color: var(--muted); }
+.profile-chip-caret { color: var(--muted); font-size: 11px; }
+
+/* ----------------------------- Profile modal ---------------------------- */
+.profile-modal { max-width: 520px; }
+.profile-top { display: flex; align-items: center; gap: 16px; margin-bottom: 18px; }
+.profile-name { font-size: 22px; font-weight: 800; }
+.avatar-editor { margin-bottom: 18px; }
+.avatar-choices { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-top: 8px; }
+.avatar-choice {
+  width: 52px; height: 52px; border-radius: 50%; cursor: pointer;
+  background: linear-gradient(135deg, #243447, #1a222c); border: 2px solid var(--line);
+  display: flex; align-items: center; justify-content: center;
+}
+.avatar-choice .avatar-emoji { font-size: 26px; }
+.avatar-choice.sel { box-shadow: 0 0 0 2px var(--blue); border-color: var(--blue); }
+.avatar-upload {
+  display: inline-flex; align-items: center; gap: 4px; cursor: pointer;
+  background: var(--panel-2); border: 1px dashed var(--line); border-radius: 10px;
+  padding: 10px 14px; font-size: 13px; color: var(--blue);
+}
+.avatar-upload:hover { border-color: var(--blue); }
+.avatar-remove { background: none; border: none; color: var(--red); cursor: pointer; font-size: 12px; }
+.profile-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 8px; margin-top: 8px; }
+.stat { background: var(--panel-2); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; }
+.stat-k { display: block; font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .4px; }
+.stat-v { font-size: 14px; font-weight: 700; }
+.profile-prog-wrap { margin-top: 18px; }
+.profile-prog { list-style: none; margin: 8px 0 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.profile-prog li { display: flex; justify-content: space-between; gap: 12px; font-size: 13px; padding: 6px 10px; background: var(--panel-2); border-radius: 8px; }
+.prog-val { color: var(--muted); }
+.prog-delta { font-weight: 700; margin-left: 6px; }
+.prog-delta.up { color: var(--green); }
+.prog-delta.down { color: var(--red); }
