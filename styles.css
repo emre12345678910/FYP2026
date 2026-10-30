@@ -295,3 +295,39 @@ input:focus, select:focus { outline: none; border-color: var(--blue); }
   padding: 8px 14px; cursor: pointer; font-size: 13px; font-weight: 600;
 }
 .danger:hover { background: rgba(255, 93, 108, 0.12); }
+
+/* --------------------------- Pain & Injury section ---------------------- */
+.field-label { display: block; font-size: 13px; color: var(--muted); margin-bottom: 6px; }
+.pain-symptoms { margin-bottom: 12px; }
+.pain-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; margin-bottom: 4px; }
+textarea {
+  background: #0e141b; color: var(--text); border: 1px solid var(--line);
+  border-radius: 8px; padding: 8px 10px; font-size: 14px; font-family: inherit; resize: vertical;
+}
+textarea:focus { outline: none; border-color: var(--blue); }
+.treat-link {
+  display: inline-block; margin-top: 10px; color: var(--blue);
+  text-decoration: none; font-size: 13px; font-weight: 600;
+}
+.treat-link:hover { text-decoration: underline; }
+
+/* -------------------------------- Modal --------------------------------- */
+.modal-overlay {
+  position: fixed; inset: 0; background: rgba(0,0,0,.62);
+  display: flex; align-items: center; justify-content: center; z-index: 100; padding: 24px;
+}
+.modal {
+  background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius);
+  max-width: 900px; width: 100%; max-height: 86vh; overflow: auto; padding: 20px 22px;
+  box-shadow: 0 20px 60px rgba(0,0,0,.5);
+}
+.modal-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
+.modal-head h2 { margin: 0; font-size: 18px; }
+.modal-close {
+  background: transparent; color: var(--muted); border: 1px solid var(--line);
+  border-radius: 8px; width: 32px; height: 32px; cursor: pointer; font-size: 15px;
+}
+.modal-close:hover { color: var(--text); border-color: var(--muted); }
+.injury-table td { white-space: normal; vertical-align: top; max-width: 300px; }
+.injury-table th:first-child, .injury-table td:first-child { font-weight: 600; }
+.modal-note { margin-top: 12px; }

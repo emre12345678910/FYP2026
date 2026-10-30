@@ -5,11 +5,73 @@ import {
   getOverride, setOverride,
   getHydrationToday, addBottle, removeBottle, DEFAULT_BOTTLE_ML,
   hydrationGoalMl, exerciseMinutesToday,
-  INTENSITY_LEVELS, HIGH_INTENSITY, MACRO_TAGS,
+  INTENSITY_LEVELS, HIGH_INTENSITY, MACRO_TAGS, PAIN_SYMPTOMS,
 } from './store.js';
 
 // Athlete lookup helper (for ROM baseline access at render time).
 function athleteById(id) { return getAthletes().find((a) => a.id === id); }
+
+// Reference table: common Muay Thai / gym injuries — how they happen and how
+// to manage/prevent them. Shown in a modal from the Pain & Injury section.
+const INJURY_GUIDE = [
+  {
+    injury: 'Head & Concussions: Dizziness, headache, confusion, nausea, light sensitivity, or temporary loss of consciousness after a blow to the head.',
+    how: 'More frequent in boxing due to continuous head-target volume, and a core risk during Muay Thai sparring.',
+    manage: 'Immediate cessation of contact activity. REST should be strict for the first 24–48 hours, followed by a gradual, multi-stage return-to-play protocol guided by a healthcare professional. Persistent symptoms require specialised neuro-vestibular physical therapy.',
+  },
+  {
+    injury: 'Sprained Wrists, Fractures, Tendinopathy: Sharp wrist/knuckle pain, swelling, bruising, weakened grip strength.',
+    how: 'From poor punch alignment or loose wraps.',
+    manage: 'Proper hand wraps and snug gloves, daily isometric holds (30–45 secs) for tendon flare-ups, or RICE (Rest, Ice, Compression, Elevation) and medical splinting/casting for fractures.',
+  },
+  {
+    injury: 'Bruised Shins, Shin Splints, Ankle Sprains: Deep bone bruising, swelling, localised tenderness, pain when bearing weight/kicking.',
+    how: 'High kicking volume and intensity / repeated impact.',
+    manage: 'RICE, foam rolling for shin splints, reducing kicking volume / checking impacts, and wearing proper shin guards.',
+  },
+  {
+    injury: 'Bruised / Cracked Ribs: Sharp local pain when twisting, bending, or taking a deep breath.',
+    how: 'Repeated punching impact without proper cover during sparring.',
+    manage: 'Rest, ice, compression, and pausing sparring/clinching until normal chest expansion & rotation are pain-free.',
+  },
+  {
+    injury: 'Rotator Cuff Strain, Tendinopathy, AC Joint Irritation: Deep shoulder ache during punch extension/clinch pulling, or painful tendon snaps around the elbow.',
+    how: 'Impact overload causing irritation.',
+    manage: 'Soft tissue mobilisation, call pressure on tight forearm/shoulder areas, progressive rotator cuff strengthening, and exercise modifications.',
+  },
+];
+
+function openInjuryGuide() {
+  const rows = INJURY_GUIDE.map((r) => `
+    <tr>
+      <td>${esc(r.injury)}</td>
+      <td>${esc(r.how)}</td>
+      <td>${esc(r.manage)}</td>
+    </tr>`).join('');
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+  overlay.innerHTML = `
+    <div class="modal" role="dialog" aria-label="How to treat injuries in the gym">
+      <div class="modal-head">
+        <h2>📋 How to treat injuries in the gym</h2>
+        <button class="modal-close" aria-label="Close">✕</button>
+      </div>
+      <div class="table-wrap">
+        <table class="data-table injury-table">
+          <thead><tr><th>Pain / Injury</th><th>How?</th><th>Management / Prevention</th></tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>
+      <p class="muted small modal-note">Reference guidance only — persistent or severe symptoms require a healthcare professional.</p>
+    </div>`;
+  const close = () => overlay.remove();
+  overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
+  overlay.querySelector('.modal-close').addEventListener('click', close);
+  document.addEventListener('keydown', function esc(e) {
+    if (e.key === 'Escape') { close(); document.removeEventListener('keydown', esc); }
+  });
+  document.body.appendChild(overlay);
+}
 
 // Display a check-in's sleep as "7 h 30 min" (prefers stored minutes; falls
 // back to hours for older records saved before the minutes field existed).
@@ -230,15 +292,35 @@ function athleteView(athletes) {
         <label>Duration (min)<input type="number" min="0" name="duration_mins"></label>
       </fieldset>
 
-      <fieldset>
+      <fieldset class="wide">
         <legend>🤕 Pain &amp; Injury</legend>
-        <label>Pain score NPRS (0–10)
-          <select name="pain_score">
-            <option value="">—</option>
-            ${Array.from({ length: 11 }, (_, i) => i).map((n) => `<option value="${n}">${n}${n === 0 ? ' (no pain)' : ''}</option>`).join('')}
-          </select>
+
+        <div class="pain-symptoms">
+          <span class="field-label">Pain symptoms <span class="muted small">(select any that apply)</span></span>
+          <div class="tag-row">
+            ${PAIN_SYMPTOMS.map((s) => `<label class="tag"><input type="checkbox" name="pain_symptom" value="${esc(s)}">${esc(s)}</label>`).join('')}
+          </div>
+        </div>
+
+        <div class="pain-grid">
+          <label>Pain score NPRS (0–10)
+            <select name="pain_score">
+              <option value="">—</option>
+              ${Array.from({ length: 11 }, (_, i) => i).map((n) => `<option value="${n}">${n}${n === 0 ? ' (no pain)' : ''}</option>`).join('')}
+            </select>
+          </label>
+          <label>Pain location<input type="text" name="pain_location" placeholder="e.g. Left Ankle"></label>
+          <label>Pain period<input type="text" name="pain_period" placeholder="e.g. 3 days, since last sparring"></label>
+        </div>
+
+        <label>How did it happen? <span class="muted small">(optional)</span>
+          <textarea name="pain_description" rows="2" placeholder="Describe what you were doing when the pain started…"></textarea>
         </label>
-        <label>Pain location<input type="text" name="pain_location" placeholder="e.g. Left Ankle"></label>
+        <label>Actions taken to reduce the pain <span class="muted small">(optional)</span>
+          <textarea name="pain_actions" rows="2" placeholder="e.g. Iced for 15 min, rested, taped the wrist, stretched…"></textarea>
+        </label>
+
+        <a href="#" class="treat-link" id="treat-injuries-link">📋 How to treat injuries in the gym</a>
       </fieldset>
 
       <fieldset>
@@ -490,6 +572,13 @@ function bindAthleteForm() {
   if (sleepStart) sleepStart.addEventListener('change', recalcSleep);
   if (sleepEnd) sleepEnd.addEventListener('change', recalcSleep);
 
+  // --- "How to treat injuries in the gym" reference table (modal) ---
+  const treatLink = root.querySelector('#treat-injuries-link');
+  if (treatLink) treatLink.addEventListener('click', (e) => {
+    e.preventDefault();
+    openInjuryGuide();
+  });
+
   const form = root.querySelector('#checkin-form');
   if (!form) return;
   form.addEventListener('submit', (e) => {
@@ -510,6 +599,10 @@ function bindAthleteForm() {
       goniometer_degrees: num('goniometer_degrees'),
       pain_score: num('pain_score'),
       pain_location: str('pain_location'),
+      pain_symptoms: f.getAll('pain_symptom'),
+      pain_description: str('pain_description') || null,
+      pain_actions: str('pain_actions') || null,
+      pain_period: str('pain_period') || null,
       srpe: num('srpe'),
       intensity_level: str('intensity_level') || null,
       duration_mins: num('duration_mins'),
@@ -758,7 +851,7 @@ function rawRows(a, checkins) {
       <td>${c.duration_mins ?? '—'}</td>
       <td>${wl ?? '—'}</td>
       <td>${c.pain_score ?? '—'}</td>
-      <td>${esc(c.pain_location || '—')}</td>
+      <td>${esc(c.pain_location || '—')}${(c.pain_symptoms && c.pain_symptoms.length) ? ` <span class="pill" title="${esc(c.pain_symptoms.join('; '))}">${c.pain_symptoms.length} symptom${c.pain_symptoms.length === 1 ? '' : 's'}</span>` : ''}${c.pain_period ? ` <span class="muted small">· ${esc(c.pain_period)}</span>` : ''}</td>
       <td>${esc(c.joint_tested || '—')}${c.goniometer_degrees != null ? ' · ' + c.goniometer_degrees + '°' : ''}</td>
       <td class="${rom != null && rom < 60 ? 'cell-red' : ''}">${rom != null ? rom.toFixed(0) + '%' : '—'}</td>
       <td class="${c.sleep_hours != null && c.sleep_hours < 6 ? 'cell-yellow' : ''}">${sleepDisplay(c)}</td>
