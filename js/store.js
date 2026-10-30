@@ -314,6 +314,75 @@ export function deleteAthlete(id) {
   return true;
 }
 
+/* --------------------------- Export / Import ----------------------------- */
+// NOTE: all data lives in this browser's localStorage, which is per-device and
+// never leaves the machine. To move data to another device, Export here and
+// Import the file there. (A true cross-device sync would require a backend.)
+
+const EXPORT_VERSION = 1;
+
+// Bundles every data store into a single portable object.
+export function exportData() {
+  return {
+    app: 'eastside-fc',
+    version: EXPORT_VERSION,
+    exportedAt: sgtNow().sgt,
+    data: {
+      [ATHLETE_KEY]: getAthletes(),
+      [STORAGE_KEY]: getCheckins(),
+      [OVERRIDE_KEY]: getOverrides(),
+      [HYDRATION_KEY]: getHydrationStore(),
+    },
+  };
+}
+
+// Imports a previously exported bundle.
+//   mode 'replace' — overwrite all local data with the file's data.
+//   mode 'merge'   — keep local data, add athletes/check-ins/hydration from the
+//                    file that aren't already present (by id / key).
+// Returns a summary of what was imported.
+export function importData(bundle, mode = 'replace') {
+  if (!bundle || bundle.app !== 'eastside-fc' || !bundle.data) {
+    throw new Error('Not a valid Eastside FC export file.');
+  }
+  const d = bundle.data;
+  const incomingAthletes = d[ATHLETE_KEY] || [];
+  const incomingCheckins = d[STORAGE_KEY] || [];
+  const incomingOverrides = d[OVERRIDE_KEY] || {};
+  const incomingHydration = d[HYDRATION_KEY] || {};
+
+  if (mode === 'replace') {
+    localStorage.setItem(ATHLETE_KEY, JSON.stringify(incomingAthletes));
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(incomingCheckins));
+    localStorage.setItem(OVERRIDE_KEY, JSON.stringify(incomingOverrides));
+    localStorage.setItem(HYDRATION_KEY, JSON.stringify(incomingHydration));
+    return { mode, athletes: incomingAthletes.length, checkins: incomingCheckins.length };
+  }
+
+  // merge
+  const athletes = getAthletes();
+  const athleteIds = new Set(athletes.map((a) => a.id));
+  let addedAthletes = 0;
+  for (const a of incomingAthletes) if (!athleteIds.has(a.id)) { athletes.push(a); athleteIds.add(a.id); addedAthletes++; }
+  localStorage.setItem(ATHLETE_KEY, JSON.stringify(athletes));
+
+  const checkins = getCheckins();
+  const checkinIds = new Set(checkins.map((c) => c.id));
+  let addedCheckins = 0;
+  for (const c of incomingCheckins) if (!checkinIds.has(c.id)) { checkins.push(c); checkinIds.add(c.id); addedCheckins++; }
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(checkins));
+
+  const overrides = getOverrides();
+  for (const [id, ov] of Object.entries(incomingOverrides)) if (!overrides[id]) overrides[id] = ov;
+  localStorage.setItem(OVERRIDE_KEY, JSON.stringify(overrides));
+
+  const hyd = getHydrationStore();
+  for (const [k, v] of Object.entries(incomingHydration)) if (!hyd[k]) hyd[k] = v;
+  localStorage.setItem(HYDRATION_KEY, JSON.stringify(hyd));
+
+  return { mode, athletes: addedAthletes, checkins: addedCheckins };
+}
+
 /* ----------------------------- Derived metrics --------------------------- */
 
 // Acute body-mass shift (%) = (pre - post) / pre * 100. Positive = fluid loss.
