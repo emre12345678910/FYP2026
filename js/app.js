@@ -6,7 +6,7 @@ import {
   getHydrationToday, addBottle, removeBottle, DEFAULT_BOTTLE_ML,
   hydrationGoalMl, exerciseMinutesToday,
   exportData, importData,
-  COMBAT_TYPES, INTENSITY_LEVELS, HIGH_INTENSITY, MACRO_TAGS, PAIN_SYMPTOMS,
+  COMBAT_TYPES, BP_TIMINGS, INTENSITY_LEVELS, HIGH_INTENSITY, MACRO_TAGS, PAIN_SYMPTOMS,
 } from './store.js';
 
 // Athlete lookup helper (for ROM baseline access at render time).
@@ -36,6 +36,19 @@ function avatarMarkup(athlete, size = 'md') {
   }
   const av = AVATARS[athlete.avatar] || AVATARS.boxer;
   return `<span class="avatar avatar-${size} ${av.cls} animated"><span class="avatar-emoji">${av.emoji}</span></span>`;
+}
+
+// Centered athlete controls (select / add / delete) for the middle of the top bar.
+function athletePicker(athletes) {
+  const a = athleteById(state.selectedAthlete);
+  const opts = athletes.map((x) =>
+    `<option value="${x.id}" ${x.id === state.selectedAthlete ? 'selected' : ''}>${esc(x.name)}</option>`).join('');
+  return `
+    <div class="athlete-picker-top">
+      <select id="athlete-select" title="Select athlete">${opts || '<option>No athletes</option>'}</select>
+      <button class="ghost" id="add-athlete" title="Add a new athlete">+ New</button>
+      ${a ? `<button class="danger" id="delete-athlete" title="Delete this athlete and all their data">🗑</button>` : ''}
+    </div>`;
 }
 
 // Profile chip shown at the top right of the top bar. Click opens the profile.
@@ -299,6 +312,7 @@ function render() {
         <button class="tab ${state.view === 'athlete' ? 'active' : ''}" data-view="athlete">Athlete Check-in</button>
         <button class="tab ${state.view === 'coach' ? 'active' : ''}" data-view="coach">Coach Dashboard</button>
       </nav>
+      ${athletePicker(athletes)}
       <div class="tz">🕒 SGT (UTC+8)</div>
       <div class="data-actions">
         <button class="ghost" id="export-data" title="Download all data as a file (to move to another device)">⬇ Export</button>
@@ -322,6 +336,42 @@ function bindShell() {
   const chip = root.querySelector('#profile-chip');
   if (chip) chip.addEventListener('click', () => {
     if (state.selectedAthlete) openProfile(state.selectedAthlete);
+  });
+
+  // --- Athlete controls (now in the top bar, available in both views) ---
+  const sel = root.querySelector('#athlete-select');
+  if (sel) sel.addEventListener('change', () => { state.selectedAthlete = sel.value; render(); });
+
+  const addBtn = root.querySelector('#add-athlete');
+  if (addBtn) addBtn.addEventListener('click', () => {
+    const name = prompt('Athlete name?');
+    if (!name) return;
+    let gender = prompt(`Gender for ${name}? (Male / Female)`, '');
+    if (gender) {
+      const g = gender.trim().toLowerCase();
+      gender = g.startsWith('m') ? 'Male' : g.startsWith('f') ? 'Female' : gender.trim();
+    }
+    let combatType = prompt(`Type of combat for ${name}? (Boxing / Muay Thai)`, '');
+    if (combatType) {
+      const c = combatType.trim().toLowerCase();
+      combatType = c.startsWith('b') ? 'Boxing' : c.startsWith('m') ? 'Muay Thai' : combatType.trim();
+    }
+    const currentWeight = prompt(`Current weight (kg) for ${name}?`, '');
+    const age = prompt(`Age for ${name}?`, '');
+    const a = addAthlete({ name, gender, combatType, currentWeight, age });
+    state.selectedAthlete = a.id;
+    render();
+  });
+
+  const deleteBtn = root.querySelector('#delete-athlete');
+  if (deleteBtn) deleteBtn.addEventListener('click', () => {
+    const a = athleteById(state.selectedAthlete);
+    if (!a) return;
+    if (!confirm(`Delete ${a.name}'s profile? This permanently removes all their check-ins, hydration logs and data. This cannot be undone.`)) return;
+    deleteAthlete(a.id);
+    const remaining = getAthletes();
+    state.selectedAthlete = remaining.length ? remaining[0].id : null;
+    render();
   });
 
   // --- Export: download all data as a JSON file ---
@@ -468,8 +518,6 @@ function hydrationTracker() {
 }
 
 function athleteView(athletes) {
-  const opts = athletes.map((a) =>
-    `<option value="${a.id}" ${a.id === state.selectedAthlete ? 'selected' : ''}>${esc(a.name)}</option>`).join('');
 
   const a = athleteById(state.selectedAthlete);
   const profileBits = a ? [
@@ -487,14 +535,7 @@ function athleteView(athletes) {
   <section class="panel">
     ${profile}
     <div class="panel-head">
-      <h2>Daily / Session Check-in</h2>
-      <div class="athlete-pick">
-        <label>Athlete
-          <select id="athlete-select">${opts}</select>
-        </label>
-        <button class="ghost" id="add-athlete">+ New athlete</button>
-        ${a ? `<button class="danger" id="delete-athlete" title="Delete this athlete and all their data">🗑 Delete profile</button>` : ''}
-      </div>
+      <h2>Daily / Session Check-in <span class="muted small">· ${a ? esc(a.name) : 'select an athlete above'}</span></h2>
     </div>
 
     <form id="checkin-form" class="form-grid">
@@ -516,6 +557,12 @@ function athleteView(athletes) {
       <div class="body-mass-row">
         <fieldset class="body-mass-fieldset">
           <legend>🩺 Blood Pressure</legend>
+          <label>Timing
+            <select name="bp_timing" id="bp-timing">
+              <option value="">—</option>
+              ${BP_TIMINGS.map((t) => `<option>${t}</option>`).join('')}
+            </select>
+          </label>
           <label>Systolic (mmHg)<input type="number" min="40" max="300" name="bp_systolic" id="bp-systolic" placeholder="e.g. 120"></label>
           <label>Diastolic (mmHg)<input type="number" min="30" max="200" name="bp_diastolic" id="bp-diastolic" placeholder="e.g. 80"></label>
           <div class="sweat-result">
@@ -595,6 +642,12 @@ function athleteView(athletes) {
 
       <fieldset>
         <legend>😴 Sleep</legend>
+        <label>Type of sleep
+          <select name="sleep_type" id="sleep-type">
+            <option value="Overnight">Overnight sleep</option>
+            <option value="Nap">Nap</option>
+          </select>
+        </label>
         <div class="sleep-tracker">
           <div class="sleep-times">
             <label>Slept at
@@ -659,6 +712,7 @@ function athleteCharts() {
     <h2>📊 My Progress <span class="muted small">· your personal trends across all metrics</span></h2>
     <div class="charts">${renderCharts(a, checkins)}</div>
   </section>
+  ${napLog(checkins)}
   ${dietLog(checkins)}`;
 }
 
@@ -671,6 +725,7 @@ function bpLogTable(checkins) {
     const cat = bpCategory(c.bp_systolic, c.bp_diastolic);
     return `<tr>
       <td>${esc(formatSgt(c.timestampUtc))}</td>
+      <td>${c.bp_timing ? `<span class="pill">${esc(c.bp_timing)}</span>` : '—'}</td>
       <td>${c.bp_systolic}/${c.bp_diastolic} mmHg</td>
       <td>${cat ? `<span class="tier ${cat.cls}">${cat.label}</span>` : '—'}</td>
     </tr>`;
@@ -678,7 +733,7 @@ function bpLogTable(checkins) {
   return `
     <div class="table-wrap">
       <table class="data-table">
-        <thead><tr><th>Time (SGT)</th><th>Reading</th><th>Category</th></tr></thead>
+        <thead><tr><th>Time (SGT)</th><th>Timing</th><th>Reading</th><th>Category</th></tr></thead>
         <tbody>${rows}</tbody>
       </table>
     </div>`;
@@ -706,6 +761,35 @@ function bodyMassLogTable(checkins) {
         <tbody>${rows}</tbody>
       </table>
     </div>`;
+}
+
+// Separate nap log sheet — every nap, timestamped, flagged >90 min in red.
+function napLog(checkins) {
+  const list = checkins.filter((c) => c.sleep_type === 'Nap' && c.sleep_minutes != null).slice().reverse();
+  const rows = list.map((c) => {
+    const m = c.sleep_minutes;
+    const over = m > 90;
+    const short = m < 20;
+    const note = over ? '<span class="cell-red">over 90m</span>'
+      : short ? '<span class="cell-yellow">under 20m</span>'
+      : '<span class="pill ok">20–90m ✓</span>';
+    return `<tr>
+      <td>${esc(formatSgt(c.timestampUtc))}</td>
+      <td class="${over ? 'cell-red' : ''}">${formatHoursMinutes(m)}</td>
+      <td>${note}</td>
+    </tr>`;
+  }).join('');
+  return `
+  <section class="panel">
+    <h3>💤 Nap log <span class="muted small">· recommended 20–90 min · timestamped (SGT)</span></h3>
+    ${list.length ? `
+    <div class="table-wrap">
+      <table class="data-table" style="max-width:520px">
+        <thead><tr><th>Time (SGT)</th><th>Duration</th><th>Status</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>` : '<p class="muted">No naps logged yet. Log a nap by selecting “Nap” in the Sleep section.</p>'}
+  </section>`;
 }
 
 // Timestamped diet / nutrition log sheet (most recent first). Shows each
@@ -785,43 +869,6 @@ function recentCheckins() {
 }
 
 function bindAthleteForm() {
-  const sel = root.querySelector('#athlete-select');
-  if (sel) sel.addEventListener('change', () => { state.selectedAthlete = sel.value; render(); });
-
-  const addBtn = root.querySelector('#add-athlete');
-  if (addBtn) addBtn.addEventListener('click', () => {
-    const name = prompt('Athlete name?');
-    if (!name) return;
-    let gender = prompt(`Gender for ${name}? (Male / Female)`, '');
-    if (gender) {
-      const g = gender.trim().toLowerCase();
-      gender = g.startsWith('m') ? 'Male' : g.startsWith('f') ? 'Female' : gender.trim();
-    }
-    let combatType = prompt(`Type of combat for ${name}? (Boxing / Muay Thai)`, '');
-    if (combatType) {
-      const c = combatType.trim().toLowerCase();
-      combatType = c.startsWith('b') ? 'Boxing' : c.startsWith('m') ? 'Muay Thai' : combatType.trim();
-    }
-    const currentWeight = prompt(`Current weight (kg) for ${name}?`, '');
-    const age = prompt(`Age for ${name}?`, '');
-    // Baseline ROM is set from the check-in form (below the ROM inputs);
-    // bottle capacity is set beside the hydration bar. Both use defaults here.
-    const a = addAthlete({ name, gender, combatType, currentWeight, age });
-    state.selectedAthlete = a.id;
-    render();
-  });
-
-  const deleteBtn = root.querySelector('#delete-athlete');
-  if (deleteBtn) deleteBtn.addEventListener('click', () => {
-    const a = athleteById(state.selectedAthlete);
-    if (!a) return;
-    if (!confirm(`Delete ${a.name}'s profile? This permanently removes all their check-ins, hydration logs and data. This cannot be undone.`)) return;
-    deleteAthlete(a.id);
-    const remaining = getAthletes();
-    state.selectedAthlete = remaining.length ? remaining[0].id : null;
-    render();
-  });
-
   // --- Hydration tracker handlers ---
   const bottleMlInput = root.querySelector('#bottle-ml');
   if (bottleMlInput) {
@@ -949,6 +996,7 @@ function bindAthleteForm() {
       body_mass_kg: num('body_mass_kg'),
       bp_systolic: num('bp_systolic'),
       bp_diastolic: num('bp_diastolic'),
+      bp_timing: str('bp_timing') || null,
       pre_weight_kg: num('pre_weight_kg'),
       post_weight_kg: num('post_weight_kg'),
       joint_tested: str('joint_tested'),
@@ -962,6 +1010,7 @@ function bindAthleteForm() {
       srpe: num('srpe'),
       intensity_level: str('intensity_level') || null,
       duration_mins: num('duration_mins'),
+      sleep_type: str('sleep_type') || null,
       sleep_hours: num('sleep_hours'),
       sleep_minutes: num('sleep_minutes'),
       sleep_start: str('sleep_start') || null,
@@ -975,11 +1024,52 @@ function bindAthleteForm() {
       },
     };
     saveCheckin(input, athleteById(state.selectedAthlete));
+
+    // --- On-save sleep notifications ---
+    const mins = input.sleep_minutes;
+    if (input.sleep_type === 'Nap' && mins != null) {
+      if (mins < 20) {
+        // dismissible popup for a too-short nap
+        showNapPopup(mins);
+      } else if (mins > 90) {
+        toast(`Nap was ${formatHoursMinutes(mins)} — over the recommended 90 min.`, 'red');
+      }
+    }
+    if (input.sleep_type === 'Overnight' && input.sleep_hours != null) {
+      if (input.sleep_hours > 10) toast(`Overnight sleep ${input.sleep_hours}h is over the 10h line.`, 'red');
+      else if (input.sleep_hours < 7) toast(`Overnight sleep ${input.sleep_hours}h is under the 7h line.`, 'yellow');
+    }
+
     const msg = root.querySelector('#save-msg');
     msg.textContent = '✓ Saved with SGT timestamp';
     msg.classList.add('show');
-    setTimeout(render, 700);
+    setTimeout(render, 900);
   });
+}
+
+// A dismissible modal shown when a logged nap is shorter than 20 min.
+function showNapPopup(mins) {
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+  overlay.innerHTML = `
+    <div class="modal nap-popup" role="dialog" aria-label="Short nap">
+      <div class="nap-popup-emoji">😴</div>
+      <h2>Only ${formatHoursMinutes(mins)}?</h2>
+      <p>The recommended nap is <strong>20–90 min</strong>. Do you want to sleep a bit more?</p>
+      <button class="primary nap-dismiss">Dismiss</button>
+    </div>`;
+  overlay.querySelector('.nap-dismiss').addEventListener('click', () => overlay.remove());
+  document.body.appendChild(overlay);
+}
+
+// Lightweight transient toast notification (auto-dismisses).
+function toast(text, cls = '') {
+  const t = document.createElement('div');
+  t.className = `toast ${cls}`;
+  t.textContent = text;
+  document.body.appendChild(t);
+  setTimeout(() => t.classList.add('show'), 10);
+  setTimeout(() => { t.classList.remove('show'); setTimeout(() => t.remove(), 300); }, 4000);
 }
 
 /* --------------------- Shared analytics chart builders ------------------- */
@@ -1026,9 +1116,11 @@ function buildChartSeries(a, checkins) {
     post: avg(d.items, (c) => c.post_weight_kg),
   })).filter((d) => d.pre != null || d.post != null);
 
+  // Sleep chart = overnight sleep per night only (naps are tracked separately).
+  // Legacy records without a sleep_type are treated as overnight.
   const sleepSeries = days.map((d) => ({
     label: d.label,
-    hours: avg(d.items, (c) => c.sleep_hours),
+    hours: avg(d.items.filter((c) => c.sleep_type !== 'Nap'), (c) => c.sleep_hours),
   })).filter((d) => d.hours != null);
 
   const nutSeries = days.map((d) => ({

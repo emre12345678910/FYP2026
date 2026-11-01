@@ -137,15 +137,21 @@ export function sleepChart(series) {
   if (!series.length) return emptyChart('No sleep data yet');
   const labels = series.map((s) => s.label);
   const min = 0;
-  const max = Math.max(10, Math.ceil(Math.max(...series.map((s) => s.hours ?? 0))));
+  const max = Math.max(11, Math.ceil(Math.max(...series.map((s) => s.hours ?? 0))));
   const pts = series.map((s, i) => ({ x: scaleX(i, series.length), y: scaleY(s.hours ?? 0, min, max), hours: s.hours }));
-  const eightY = scaleY(8, min, max);
-  // dots coloured against the >8h recommendation
-  const dots = pts.map((p) => `<circle cx="${p.x}" cy="${p.y}" r="3" class="dot-${p.hours == null ? 'green' : p.hours < 6 ? 'red' : p.hours < 8 ? 'yellow' : 'green'}"/>`).join('');
+  const lowY = scaleY(7, min, max);
+  const highY = scaleY(10, min, max);
+  // dots: within the 7–10h band = green, below 7 = yellow, above 10 = red
+  const dots = pts.map((p) => {
+    const cls = p.hours == null ? 'green' : p.hours > 10 ? 'red' : p.hours < 7 ? 'yellow' : 'green';
+    return `<circle cx="${p.x}" cy="${p.y}" r="3" class="dot-${cls}"/>`;
+  }).join('');
   return svgWrap(
-    axes(min, max, labels, { yFmt: (v) => v.toFixed(0) + 'h', title: 'Sleep per Day (hours)' }) +
-    `<line x1="${P.l}" y1="${eightY}" x2="${W - P.r}" y2="${eightY}" class="baseline"/>` +
-    `<text x="${W - P.r}" y="${eightY - 4}" class="ann">8h recommended</text>` +
+    axes(min, max, labels, { yFmt: (v) => v.toFixed(0) + 'h', title: 'Overnight Sleep per Night (hours)' }) +
+    `<line x1="${P.l}" y1="${highY}" x2="${W - P.r}" y2="${highY}" class="threshold"/>` +
+    `<text x="${W - P.r}" y="${highY - 4}" class="ann red">10h</text>` +
+    `<line x1="${P.l}" y1="${lowY}" x2="${W - P.r}" y2="${lowY}" class="threshold"/>` +
+    `<text x="${W - P.r}" y="${lowY - 4}" class="ann red">7h</text>` +
     `<path d="${path(pts)}" class="line-green"/>` + dots
   );
 }

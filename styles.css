@@ -440,3 +440,30 @@ textarea:focus { outline: none; border-color: var(--blue); }
   border-radius: 8px; padding: 8px 12px; font-size: 12px; color: var(--muted); margin-bottom: 4px;
 }
 .sync-note strong { color: var(--text); }
+
+/* ----------------------- Top-bar athlete picker ------------------------- */
+.athlete-picker-top { display: flex; align-items: center; gap: 6px; }
+.athlete-picker-top select {
+  background: #0e141b; color: var(--text); border: 1px solid var(--line);
+  border-radius: 8px; padding: 7px 10px; font-size: 14px; font-weight: 600; max-width: 180px;
+}
+.athlete-picker-top .ghost { padding: 7px 10px; font-size: 13px; }
+.athlete-picker-top .danger { padding: 7px 10px; font-size: 13px; }
+
+/* ------------------------------ Nap popup ------------------------------- */
+.nap-popup { max-width: 380px; text-align: center; }
+.nap-popup-emoji { font-size: 48px; }
+.nap-popup h2 { margin: 6px 0; }
+.nap-popup p { color: var(--muted); margin: 0 0 16px; }
+
+/* -------------------------------- Toast --------------------------------- */
+.toast {
+  position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%) translateY(20px);
+  background: var(--panel); color: var(--text); border: 1px solid var(--line);
+  border-left: 4px solid var(--blue); border-radius: 10px; padding: 12px 18px;
+  font-size: 14px; font-weight: 600; box-shadow: 0 10px 30px rgba(0,0,0,.4);
+  opacity: 0; transition: opacity .3s, transform .3s; z-index: 200; max-width: 90vw;
+}
+.toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+.toast.red { border-left-color: var(--red); }
+.toast.yellow { border-left-color: var(--yellow); }
