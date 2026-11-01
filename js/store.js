@@ -126,6 +126,7 @@ export function saveCheckin(input, athlete) {
     // Vitals — Blood Pressure (mmHg), timestamped via the record's `timestamp`
     bp_systolic: input.bp_systolic ?? null,
     bp_diastolic: input.bp_diastolic ?? null,
+    bp_timing: input.bp_timing || null, // 'Before training' | 'After training'
 
     // ROM & Pain
     joint_tested: input.joint_tested || null,
@@ -148,6 +149,7 @@ export function saveCheckin(input, athlete) {
     sweat_rate_lph,
 
     // Sleep
+    sleep_type: input.sleep_type || null, // 'Overnight' | 'Nap'
     sleep_hours: input.sleep_hours ?? null,
     sleep_minutes: input.sleep_minutes ?? null,
     sleep_start: input.sleep_start || null,
@@ -409,16 +411,20 @@ export function sweatRateLph(preKg, postKg, durationMin, fluidsMl = 0) {
   return Math.round((litresLost / hours) * 100) / 100;
 }
 
-// Classifies a blood-pressure reading (mmHg) using common adult categories.
+// Classifies a blood-pressure reading (mmHg) using the reference categories:
+//   Normal            : systolic < 120   and diastolic < 80
+//   High-Normal        : systolic 130–139 or  diastolic 85–89   (borderline)
+//   Hypertension St.1 : systolic 140–159 or  diastolic 90–99
+//   Hypertension St.2 : systolic ≥ 160   or  diastolic ≥ 100
 // Returns { label, cls } where cls is green | yellow | red for colouring.
 export function bpCategory(systolic, diastolic) {
   const s = Number(systolic), d = Number(diastolic);
   if (!s || !d) return null;
-  if (s >= 180 || d >= 120) return { label: 'Hypertensive crisis', cls: 'red' };
-  if (s >= 140 || d >= 90) return { label: 'Hypertension stage 2', cls: 'red' };
-  if (s >= 130 || d >= 80) return { label: 'Hypertension stage 1', cls: 'yellow' };
-  if (s >= 120) return { label: 'Elevated', cls: 'yellow' };
-  if (s < 90 || d < 60) return { label: 'Low', cls: 'yellow' };
+  if (s >= 160 || d >= 100) return { label: 'Hypertension Stage 2', cls: 'red' };
+  if ((s >= 140 && s <= 159) || (d >= 90 && d <= 99)) return { label: 'Hypertension Stage 1', cls: 'red' };
+  if ((s >= 130 && s <= 139) || (d >= 85 && d <= 89)) return { label: 'High-Normal (Borderline)', cls: 'yellow' };
+  if (s < 120 && d < 80) return { label: 'Normal', cls: 'green' };
+  // Between the table's bands (e.g. 120–129 systolic): treat as Normal-ish.
   return { label: 'Normal', cls: 'green' };
 }
 
@@ -458,6 +464,8 @@ export function romPct(angleDeg, baselineDeg) {
 }
 
 export const COMBAT_TYPES = ['Boxing', 'Muay Thai'];
+export const SLEEP_TYPES = ['Overnight', 'Nap'];
+export const BP_TIMINGS = ['Before training', 'After training'];
 export const INTENSITY_LEVELS = ['Technique', 'Conditioning', 'Sparring', 'Max Load'];
 export const HIGH_INTENSITY = ['Sparring', 'Max Load', 'Conditioning'];
 export const SLEEP_TIERS = ['Poor', 'Average', 'Restorative'];
