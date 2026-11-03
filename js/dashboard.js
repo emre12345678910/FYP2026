@@ -6,7 +6,7 @@
 import {
   getAthletes, checkinsForAthlete, mentalLogsForAthlete,
   fluidLossPct, bpCategory, formatHoursMinutes, formatSgt, sgtDay, romPct,
-  getOverride, exportData, importData,
+  getOverride, exportData, importData, pullState, startSync, isShared, resolveBackend,
 } from './store.js';
 import { evaluateAthlete, readinessTier, evaluateReadinessStatus, tierMeta } from './alerts.js';
 import {
@@ -20,7 +20,7 @@ import {
 
 const root = document.getElementById('app');
 // tab: 'physio' | 'psych' ; physioSub: 'daily' | 'training'
-let state = { tab: 'physio', physioSub: 'daily', selectedAthlete: null, rosterFilter: 'All' };
+let state = { tab: 'physio', physioSub: 'daily', selectedAthlete: null, rosterFilter: 'All', selectedMentalLog: null };
 
 function athleteById(id) { return getAthletes().find((a) => a.id === id); }
 function esc(s) {
@@ -85,10 +85,13 @@ function bindShell() {
     b.addEventListener('click', () => { state.rosterFilter = b.dataset.filter; render(); }));
 
   root.querySelectorAll('[data-ath]').forEach((b) =>
-    b.addEventListener('click', () => { state.selectedAthlete = b.dataset.ath; render(); }));
+    b.addEventListener('click', () => { state.selectedAthlete = b.dataset.ath; state.selectedMentalLog = null; render(); }));
 
   root.querySelectorAll('[data-sub]').forEach((b) =>
     b.addEventListener('click', () => { state.physioSub = b.dataset.sub; render(); }));
+
+  root.querySelectorAll('[data-mlog]').forEach((r) =>
+    r.addEventListener('click', () => { state.selectedMentalLog = r.dataset.mlog; render(); }));
 
   const exportBtn = root.querySelector('#export-data');
   if (exportBtn) exportBtn.addEventListener('click', () => {
@@ -321,13 +324,16 @@ function psychPanel(a) {
   const logs = mentalLogsForAthlete(a.id);
   if (!logs.length) return '<section class="panel"><p class="muted">No psychological (mental log) data yet for this athlete. Athletes complete these in the Mental log of the Input app.</p></section>';
 
-  const latest = logs[logs.length - 1];
+  // The submission currently being viewed: the one the coach picked from the
+  // history table, else the most recent.
+  const selected = logs.find((m) => m.id === state.selectedMentalLog) || logs[logs.length - 1];
+  const isLatest = selected === logs[logs.length - 1];
 
-  // Latest scored results
-  const restq = latest.responses && latest.responses.restq ? scoreRestq(latest.responses.restq) : null;
-  const poms = latest.responses && latest.responses.poms ? scorePoms(latest.responses.poms) : null;
-  const tsci = latest.responses && latest.responses.tsci ? scoreTsci(latest.responses.tsci) : null;
-  const sms = latest.responses && latest.responses.sms ? scoreSms(latest.responses.sms) : null;
+  // Scored results for the viewed submission
+  const restq = selected.responses && selected.responses.restq ? scoreRestq(selected.responses.restq) : null;
+  const poms = selected.responses && selected.responses.poms ? scorePoms(selected.responses.poms) : null;
+  const tsci = selected.responses && selected.responses.tsci ? scoreTsci(selected.responses.tsci) : null;
+  const sms = selected.responses && selected.responses.sms ? scoreSms(selected.responses.sms) : null;
 
   // Trend series across all logs
   const restqTrend = logs.map((m) => { const s = m.responses && m.responses.restq ? scoreRestq(m.responses.restq) : null; return s ? { label: (m.sgtDay || sgtDay(m.timestampUtc)).slice(5), stress: s.stressIndex, recovery: s.recoveryIndex } : null; }).filter(Boolean);
@@ -367,24 +373,37 @@ function psychPanel(a) {
   ].map((s) => {
     const charts = [s.profile, s.trend].filter(Boolean);
     return `<section class="panel">
-      <h3>${s.title} <span class="muted small">· latest: ${esc(formatSgt(latest.timestampUtc))}</span></h3>
+      <h3>${s.title} <span class="muted small">· viewing: ${esc(formatSgt(selected.timestampUtc))}${isLatest ? ' (latest)' : ''}</span></h3>
       ${charts.length ? `<div class="charts">${charts.map((c) => `<div class="chart-card">${c}</div>`).join('')}</div>`
         : '<p class="muted">No submissions for this questionnaire yet.</p>'}
     </section>`;
   }).join('');
 
-  const historyRows = logs.slice().reverse().slice(0, 12).map((m) => {
+  // Clickable history — pick any past submission to view its scored results.
+  const historyRows = logs.slice().reverse().map((m) => {
     const done = Object.keys(QUESTIONNAIRES).filter((k) => m.responses && m.responses[k] && Object.keys(m.responses[k]).length);
-    return `<tr><td>${esc(formatSgt(m.timestampUtc))}</td><td>${done.map((k) => `<span class="pill">${QUESTIONNAIRES[k].shortTitle}</span>`).join(' ') || '—'}</td></tr>`;
+    const sel = m.id === selected.id;
+    return `<tr class="history-row ${sel ? 'sel' : ''}" data-mlog="${m.id}" title="View this submission's results">
+      <td>${esc(formatSgt(m.timestampUtc))}${sel ? ' <span class="pill ok">viewing</span>' : ''}</td>
+      <td>${done.map((k) => `<span class="pill">${QUESTIONNAIRES[k].shortTitle}</span>`).join(' ') || '—'}</td></tr>`;
   }).join('');
 
   return `
+    <div class="muted small view-hint">Viewing submission from <strong>${esc(formatSgt(selected.timestampUtc))}</strong>${isLatest ? ' (latest)' : ''} — click any row in the history below to look back at an earlier date/time.</div>
     ${headline}
     ${sections}
-    <section class="panel"><h3>🕒 Mental log history</h3>
-      <div class="table-wrap"><table class="data-table" style="max-width:560px">
+    <section class="panel"><h3>🕒 Mental log history <span class="muted small">· ${logs.length} submission${logs.length === 1 ? '' : 's'} · click a row to view</span></h3>
+      <div class="table-wrap"><table class="data-table" style="max-width:640px">
         <thead><tr><th>Time (SGT)</th><th>Questionnaires</th></tr></thead><tbody>${historyRows}</tbody></table></div>
     </section>`;
 }
 
-render();
+/* ------------------------------ Bootstrap ------------------------------- */
+async function boot() {
+  await resolveBackend();
+  if (isShared()) { try { await pullState(); } catch (e) { /* server offline; use local cache */ } }
+  render();
+  // The dashboard is read-only, so it's always safe to live-refresh on new data.
+  startSync(render);
+}
+boot();

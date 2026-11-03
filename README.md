@@ -19,16 +19,50 @@ use **⬇ Export / ⬆ Import** (true cross-device sync would need a backend).
 
 ## Run it
 
-Because the apps use ES modules, serve them over a local web server (not `file://`):
+### Option A — shared prototype over your local network (recommended)
+
+The bundled **zero-dependency Node server** serves the pages **and** a shared data
+store, so the input app and the coach dashboard see the **same data across devices**
+on the same Wi-Fi — no manual export/import.
 
 ```bash
-# from this folder
-python3 -m http.server 8000
-# Dashboard (coach):      http://localhost:8000/index.html
-# Input app (athletes):   http://localhost:8000/input.html
+# from the project root (needs Node.js installed)
+node server/server.js
 ```
 
-Any static server works. No internet connection or packages are required.
+It prints the addresses to open, e.g.:
+
+```
+On this machine:   http://localhost:8080/
+On your network:   http://192.168.1.42:8080/   ← open this on your friend's device
+```
+
+- **Coach dashboard:** `http://<address>:8080/` (or `/index.html`)
+- **Athlete input:**   `http://<address>:8080/input.html`
+
+Shared data is saved to `server/data.json` (survives restarts; git-ignored).
+The backend auto-detects: open the pages **through this server** and sharing turns on
+automatically; open them any other way and each browser just uses its own local data.
+
+> Prototype only — no auth/TLS. Fine for a trusted local network or demo.
+
+### Option B — static, browser-only (e.g. GitHub Pages)
+
+```bash
+python3 -m http.server 8000
+# Dashboard: http://localhost:8000/index.html
+# Input:     http://localhost:8000/input.html
+```
+
+Any static server works. Here each browser stores its **own** data in `localStorage`
+(not shared); use **⬇ Export / ⬆ Import** to move data between devices.
+
+### Switching backends (local → Firebase later)
+
+All networking lives in **`js/api.js`** behind one `CONFIG` block. To move to a hosted
+database later (e.g. Firebase) so it works beyond the local network, set
+`CONFIG.BACKEND = 'firebase'`, fill in `CONFIG.FIREBASE`, and implement the two marked
+functions at the bottom of that file. **No other file needs to change.**
 
 ## Psychological monitoring (Mental log)
 
@@ -90,10 +124,12 @@ Derived from the worst active alert: 🟢 **Cleared** · 🟡 **Modified** · �
 index.html        # Coach Dashboard shell (read-only)
 input.html        # Athlete Input app shell
 styles.css        # dark fight-club theme
+js/api.js         # swappable backend adapter (local / server / firebase) — change here only
 js/store.js       # persistence (incl. mental logs), SGT timestamping, derived-metric math
 js/alerts.js      # physiological alert engine + RTP status tiers
 js/charts.js      # tiny hand-rolled SVG charts (physio + psych), no chart library
 js/psych.js       # questionnaire definitions (RESTQ/POMS/TSCI/SMS-6) + scoring
 js/input.js       # Athlete Input controller (Daily / Training / Mental logs)
 js/dashboard.js   # Coach Dashboard controller (Physiological + Psychological tabs)
+server/server.js  # zero-dependency Node server: static files + shared data API
 ```

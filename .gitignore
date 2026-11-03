@@ -11,3 +11,6 @@ Thumbs.db
 *.swp
 .idea/
 .vscode/
+
+# Local prototype server runtime data (per-machine, not shared via git)
+server/data.json
