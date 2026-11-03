@@ -1,5 +1,5 @@
 // alerts.js — automated notification & alert engine + RTP status tiers
-import { fluidLossPct, romPct, sgtDay, HIGH_INTENSITY } from './store.js';
+import { fluidLossPct, romPct, sgtDay } from './store.js';
 
 // Severity: 'red' (🔴 Restricted-worthy) | 'yellow' (🟡 Warning) | 'info'
 // Each alert: { severity, icon, title, detail, checkinId, athleteId }
@@ -34,17 +34,6 @@ export function evaluateAthlete(athlete, checkins) {
     if (prev && c.pain_score != null && prev.pain_score != null && c.pain_score - prev.pain_score >= 2) {
       alerts.push(mk('red', '🔴', 'Acute pain spike',
         `Pain rose ${prev.pain_score} → ${c.pain_score} (NPRS) since last check-in${c.pain_location ? ` · ${c.pain_location}` : ''}.`, c, athlete));
-    }
-
-    // --- Under-fueling: high-intensity session without a timely pre-workout meal ---
-    if (HIGH_INTENSITY.includes(c.intensity_level)) {
-      const nl = c.nutrition_log || {};
-      const fueled = nl.pre_workout_meal && nl.pre_workout_meal.trim().length > 0;
-      const timely = nl.fueled_before_session === true;
-      if (!fueled || !timely) {
-        alerts.push(mk('yellow', '🟡', 'Under-fueling risk',
-          `${c.intensity_level} logged ${fueled ? 'but not fueled 2–3h prior' : 'with no pre-workout meal entry'}.`, c, athlete));
-      }
     }
 
     // --- Sleep deprivation: < 6h warning ---
@@ -105,7 +94,6 @@ export function evaluateReadinessStatus(log) {
   const pain = log.pain_score;
   const rom = log.rom_percentage;
   const sleep = log.sleep_hours;
-  const fueled = log.nutrition_log ? log.nutrition_log.fueled_before_session : undefined;
 
   // Sleep recommendation is over 8h: <6h is restrictive, <8h is a modifier.
   // RED TIER (Restricted)
@@ -117,8 +105,7 @@ export function evaluateReadinessStatus(log) {
   // YELLOW TIER (Modified)
   if ((pain != null && pain >= 3) ||
       (rom != null && rom <= 80) ||
-      (sleep != null && sleep < 8) ||
-      fueled === false) {
+      (sleep != null && sleep < 8)) {
     return 'YELLOW';
   }
   // GREEN TIER (Cleared)

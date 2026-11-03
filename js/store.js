@@ -154,15 +154,6 @@ export function saveCheckin(input, athlete) {
     sleep_minutes: input.sleep_minutes ?? null,
     sleep_start: input.sleep_start || null,
     sleep_end: input.sleep_end || null,
-
-    // Nutrition Log
-    nutrition_log: {
-      pre_workout_meal: input.nutrition_log?.pre_workout_meal || '',
-      post_workout_meal: input.nutrition_log?.post_workout_meal || '',
-      main_meal: input.nutrition_log?.main_meal || '',
-      quality_tags: input.nutrition_log?.quality_tags || [],
-      fueled_before_session: input.nutrition_log?.fueled_before_session === true,
-    },
   };
   checkins.push(entry);
   localStorage.setItem(STORAGE_KEY, JSON.stringify(checkins));
@@ -469,8 +460,6 @@ export const BP_TIMINGS = ['Before training', 'After training'];
 export const INTENSITY_LEVELS = ['Technique', 'Conditioning', 'Sparring', 'Max Load'];
 export const HIGH_INTENSITY = ['Sparring', 'Max Load', 'Conditioning'];
 export const SLEEP_TIERS = ['Poor', 'Average', 'Restorative'];
-export const MEAL_WINDOWS = ['Pre-workout', 'Post-workout', 'Main meal'];
-export const MACRO_TAGS = ['High Protein', 'Adequate Carbs', 'Carbs for Recovery', 'Clean/Whole Foods', 'Fast Food'];
 
 // Selectable pain/injury symptoms (checkbox list at the top of the section).
 export const PAIN_SYMPTOMS = [
