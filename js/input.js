@@ -10,7 +10,7 @@ import {
   sweatRateLph, bpCategory, sleepHoursBetween, sleepMinutesBetween, formatHoursMinutes, formatSgt,
   getHydrationToday, addBottle, removeBottle, DEFAULT_BOTTLE_ML,
   hydrationGoalMl, exerciseMinutesToday,
-  exportData, importData,
+  exportData, importData, pullState, startSync, isShared, resolveBackend,
   BP_TIMINGS, INTENSITY_LEVELS, MACRO_TAGS, PAIN_SYMPTOMS,
 } from './store.js';
 import { QUESTIONNAIRES, itemId } from './psych.js';
@@ -557,4 +557,19 @@ function bindMental(a) {
   });
 }
 
-render();
+/* ------------------------------ Bootstrap ------------------------------- */
+// Avoid re-rendering (which would discard half-filled form inputs) while the
+// user is mid-entry; only live-refresh when nothing is focused.
+function liveRefresh() {
+  const active = document.activeElement;
+  const typing = active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA' || active.tagName === 'SELECT');
+  if (!typing) render();
+}
+
+async function boot() {
+  await resolveBackend();
+  if (isShared()) { try { await pullState(); } catch (e) { /* server offline; use local cache */ } }
+  render();
+  startSync(liveRefresh);
+}
+boot();

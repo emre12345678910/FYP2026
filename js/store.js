@@ -1,10 +1,29 @@
 // store.js — persistence + Singapore Time + core domain logic
 // Zero dependencies. Data persists in localStorage.
 
+import { CONFIG, pushKey, pushAll, pullState, startSync, isShared, resolveBackend, activeBackend, KEYS } from './api.js';
+
 export const SGT = 'Asia/Singapore';
 const STORAGE_KEY = 'eastside_fc_checkins_v1';
 const ATHLETE_KEY = 'eastside_fc_athletes_v1';
 const MENTAL_KEY = 'eastside_fc_mental_v1';
+
+// Re-export sync helpers so controllers can wire up live updates.
+export { pushAll, pullState, startSync, isShared, resolveBackend, activeBackend, CONFIG as API_CONFIG };
+
+// --- Backend write-through ---------------------------------------------------
+// Every store write goes through localStorage (the synchronous cache the UI
+// reads). When a shared backend is active, `persist()` also pushes that key up
+// to the server in the background, so the other app/device sees it. Switching
+// backends is done entirely in js/api.js — nothing here changes.
+const SYNC_KEYS = new Set(Object.values(KEYS));
+function persist(key, value) {
+  localStorage.setItem(key, value);
+  if (isShared() && SYNC_KEYS.has(key)) {
+    // fire-and-forget; offline just keeps the local cache
+    pushKey(key).catch(() => {});
+  }
+}
 
 /* ----------------------------- Singapore Time ---------------------------- */
 
@@ -59,7 +78,7 @@ export function getAthletes() {
     { id: 'a2', name: 'Priya Nair', gender: 'Female', combatType: 'Muay Thai', avatar: 'muaythai', romBaseline: 140, currentWeight: 61.0, age: 27, bottleMl: 600, hydrationGoalMl: 2500 },
     { id: 'a3', name: 'Devon Lee', gender: 'Male', combatType: 'Muay Thai', avatar: 'boxer', romBaseline: 130, currentWeight: 80.3, age: 22, bottleMl: 1000, hydrationGoalMl: 3500 },
   ];
-  localStorage.setItem(ATHLETE_KEY, JSON.stringify(seed));
+  persist(ATHLETE_KEY, JSON.stringify(seed));
   return seed;
 }
 
@@ -78,7 +97,7 @@ export function addAthlete({ name, gender, combatType, romBaseline, currentWeigh
     hydrationGoalMl: DEFAULT_HYDRATION_GOAL_ML,
   };
   athletes.push(athlete);
-  localStorage.setItem(ATHLETE_KEY, JSON.stringify(athletes));
+  persist(ATHLETE_KEY, JSON.stringify(athletes));
   return athlete;
 }
 
@@ -88,7 +107,7 @@ export function updateAthlete(id, patch) {
   const a = athletes.find((x) => x.id === id);
   if (!a) return null;
   Object.assign(a, patch);
-  localStorage.setItem(ATHLETE_KEY, JSON.stringify(athletes));
+  persist(ATHLETE_KEY, JSON.stringify(athletes));
   return a;
 }
 
@@ -166,7 +185,7 @@ export function saveCheckin(input, athlete) {
     },
   };
   checkins.push(entry);
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(checkins));
+  persist(STORAGE_KEY, JSON.stringify(checkins));
   return entry;
 }
 
@@ -178,7 +197,7 @@ function round(v, dp) {
 
 export function deleteCheckin(id) {
   const checkins = getCheckins().filter((c) => c.id !== id);
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(checkins));
+  persist(STORAGE_KEY, JSON.stringify(checkins));
 }
 
 /* --------------------------- Mental logs -------------------------------- */
@@ -204,12 +223,12 @@ export function saveMentalLog(input) {
     responses: input.responses || {},
   };
   logs.push(entry);
-  localStorage.setItem(MENTAL_KEY, JSON.stringify(logs));
+  persist(MENTAL_KEY, JSON.stringify(logs));
   return entry;
 }
 
 export function deleteMentalLog(id) {
-  localStorage.setItem(MENTAL_KEY, JSON.stringify(getMentalLogs().filter((m) => m.id !== id)));
+  persist(MENTAL_KEY, JSON.stringify(getMentalLogs().filter((m) => m.id !== id)));
 }
 
 export function mentalLogsForAthlete(athleteId) {
@@ -239,7 +258,7 @@ export function setOverride(athleteId, tier, note) {
   } else {
     all[athleteId] = { tier, note: note || '', setAt: getSingaporeTimestamp() };
   }
-  localStorage.setItem(OVERRIDE_KEY, JSON.stringify(all));
+  persist(OVERRIDE_KEY, JSON.stringify(all));
 }
 
 export function checkinsForAthlete(athleteId) {
@@ -284,7 +303,7 @@ export function addBottle(athleteId, bottleMl) {
   rec.taps += 1;
   rec.entries.push({ ml, sgt: ts.sgt, utc: ts.utc, label: ts.label });
   store[key] = rec;
-  localStorage.setItem(HYDRATION_KEY, JSON.stringify(store));
+  persist(HYDRATION_KEY, JSON.stringify(store));
   return { ...rec };
 }
 
@@ -300,7 +319,7 @@ export function removeBottle(athleteId) {
     rec.taps = Math.max(0, rec.taps - 1);
   }
   store[key] = rec;
-  localStorage.setItem(HYDRATION_KEY, JSON.stringify(store));
+  persist(HYDRATION_KEY, JSON.stringify(store));
   return { ...rec };
 }
 
@@ -334,17 +353,17 @@ export function deleteAthlete(id) {
   if (!athletes.some((a) => a.id === id)) return false;
 
   // Remove the athlete.
-  localStorage.setItem(ATHLETE_KEY, JSON.stringify(athletes.filter((a) => a.id !== id)));
+  persist(ATHLETE_KEY, JSON.stringify(athletes.filter((a) => a.id !== id)));
 
   // Remove their check-ins.
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(getCheckins().filter((c) => c.athleteId !== id)));
+  persist(STORAGE_KEY, JSON.stringify(getCheckins().filter((c) => c.athleteId !== id)));
 
   // Remove their mental logs.
-  localStorage.setItem(MENTAL_KEY, JSON.stringify(getMentalLogs().filter((m) => m.athleteId !== id)));
+  persist(MENTAL_KEY, JSON.stringify(getMentalLogs().filter((m) => m.athleteId !== id)));
 
   // Remove their coach override.
   const overrides = getOverrides();
-  if (overrides[id]) { delete overrides[id]; localStorage.setItem(OVERRIDE_KEY, JSON.stringify(overrides)); }
+  if (overrides[id]) { delete overrides[id]; persist(OVERRIDE_KEY, JSON.stringify(overrides)); }
 
   // Remove their hydration records (keys are "athleteId|SGTday").
   const hyd = getHydrationStore();
@@ -352,7 +371,7 @@ export function deleteAthlete(id) {
   for (const key of Object.keys(hyd)) {
     if (key.startsWith(id + '|')) { delete hyd[key]; changed = true; }
   }
-  if (changed) localStorage.setItem(HYDRATION_KEY, JSON.stringify(hyd));
+  if (changed) persist(HYDRATION_KEY, JSON.stringify(hyd));
 
   return true;
 }
@@ -397,11 +416,11 @@ export function importData(bundle, mode = 'replace') {
   const incomingHydration = d[HYDRATION_KEY] || {};
 
   if (mode === 'replace') {
-    localStorage.setItem(ATHLETE_KEY, JSON.stringify(incomingAthletes));
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(incomingCheckins));
-    localStorage.setItem(MENTAL_KEY, JSON.stringify(incomingMental));
-    localStorage.setItem(OVERRIDE_KEY, JSON.stringify(incomingOverrides));
-    localStorage.setItem(HYDRATION_KEY, JSON.stringify(incomingHydration));
+    persist(ATHLETE_KEY, JSON.stringify(incomingAthletes));
+    persist(STORAGE_KEY, JSON.stringify(incomingCheckins));
+    persist(MENTAL_KEY, JSON.stringify(incomingMental));
+    persist(OVERRIDE_KEY, JSON.stringify(incomingOverrides));
+    persist(HYDRATION_KEY, JSON.stringify(incomingHydration));
     return { mode, athletes: incomingAthletes.length, checkins: incomingCheckins.length };
   }
 
@@ -410,26 +429,26 @@ export function importData(bundle, mode = 'replace') {
   const athleteIds = new Set(athletes.map((a) => a.id));
   let addedAthletes = 0;
   for (const a of incomingAthletes) if (!athleteIds.has(a.id)) { athletes.push(a); athleteIds.add(a.id); addedAthletes++; }
-  localStorage.setItem(ATHLETE_KEY, JSON.stringify(athletes));
+  persist(ATHLETE_KEY, JSON.stringify(athletes));
 
   const checkins = getCheckins();
   const checkinIds = new Set(checkins.map((c) => c.id));
   let addedCheckins = 0;
   for (const c of incomingCheckins) if (!checkinIds.has(c.id)) { checkins.push(c); checkinIds.add(c.id); addedCheckins++; }
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(checkins));
+  persist(STORAGE_KEY, JSON.stringify(checkins));
 
   const mental = getMentalLogs();
   const mentalIds = new Set(mental.map((m) => m.id));
   for (const m of incomingMental) if (!mentalIds.has(m.id)) { mental.push(m); mentalIds.add(m.id); }
-  localStorage.setItem(MENTAL_KEY, JSON.stringify(mental));
+  persist(MENTAL_KEY, JSON.stringify(mental));
 
   const overrides = getOverrides();
   for (const [id, ov] of Object.entries(incomingOverrides)) if (!overrides[id]) overrides[id] = ov;
-  localStorage.setItem(OVERRIDE_KEY, JSON.stringify(overrides));
+  persist(OVERRIDE_KEY, JSON.stringify(overrides));
 
   const hyd = getHydrationStore();
   for (const [k, v] of Object.entries(incomingHydration)) if (!hyd[k]) hyd[k] = v;
-  localStorage.setItem(HYDRATION_KEY, JSON.stringify(hyd));
+  persist(HYDRATION_KEY, JSON.stringify(hyd));
 
   return { mode, athletes: addedAthletes, checkins: addedCheckins };
 }
