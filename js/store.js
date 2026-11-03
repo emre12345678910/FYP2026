@@ -4,6 +4,7 @@
 export const SGT = 'Asia/Singapore';
 const STORAGE_KEY = 'eastside_fc_checkins_v1';
 const ATHLETE_KEY = 'eastside_fc_athletes_v1';
+const MENTAL_KEY = 'eastside_fc_mental_v1';
 
 /* ----------------------------- Singapore Time ---------------------------- */
 
@@ -180,6 +181,43 @@ export function deleteCheckin(id) {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(checkins));
 }
 
+/* --------------------------- Mental logs -------------------------------- */
+// Psychological questionnaire submissions (RESTQ / POMS / TSCI / SMS-6).
+// Each record stores the raw per-item responses; scoring is derived in psych.js.
+
+export function getMentalLogs() {
+  const raw = localStorage.getItem(MENTAL_KEY);
+  return raw ? JSON.parse(raw) : [];
+}
+
+// Persists a mental-log submission. `responses` is keyed by questionnaire:
+//   { restq: { <itemId>: 0-6, ... }, poms: {...}, tsci: {...}, sms: {...} }
+export function saveMentalLog(input) {
+  const logs = getMentalLogs();
+  const ts = sgtNow();
+  const entry = {
+    id: 'mlog_' + Date.now() + Math.floor(Math.random() * 1000),
+    timestamp: ts.sgt,
+    timestampUtc: ts.utc,
+    sgtDay: ts.date,
+    athleteId: input.athleteId,
+    responses: input.responses || {},
+  };
+  logs.push(entry);
+  localStorage.setItem(MENTAL_KEY, JSON.stringify(logs));
+  return entry;
+}
+
+export function deleteMentalLog(id) {
+  localStorage.setItem(MENTAL_KEY, JSON.stringify(getMentalLogs().filter((m) => m.id !== id)));
+}
+
+export function mentalLogsForAthlete(athleteId) {
+  return getMentalLogs()
+    .filter((m) => m.athleteId === athleteId)
+    .sort((a, b) => new Date(a.timestampUtc) - new Date(b.timestampUtc));
+}
+
 /* ------------------------- Coach status overrides ------------------------ */
 // A coach can manually override an athlete's auto-computed readiness tier.
 // Stored per athlete: { tier: 'Cleared'|'Modified'|'Restricted'|null, note, by }
@@ -301,6 +339,9 @@ export function deleteAthlete(id) {
   // Remove their check-ins.
   localStorage.setItem(STORAGE_KEY, JSON.stringify(getCheckins().filter((c) => c.athleteId !== id)));
 
+  // Remove their mental logs.
+  localStorage.setItem(MENTAL_KEY, JSON.stringify(getMentalLogs().filter((m) => m.athleteId !== id)));
+
   // Remove their coach override.
   const overrides = getOverrides();
   if (overrides[id]) { delete overrides[id]; localStorage.setItem(OVERRIDE_KEY, JSON.stringify(overrides)); }
@@ -332,6 +373,7 @@ export function exportData() {
     data: {
       [ATHLETE_KEY]: getAthletes(),
       [STORAGE_KEY]: getCheckins(),
+      [MENTAL_KEY]: getMentalLogs(),
       [OVERRIDE_KEY]: getOverrides(),
       [HYDRATION_KEY]: getHydrationStore(),
     },
@@ -350,12 +392,14 @@ export function importData(bundle, mode = 'replace') {
   const d = bundle.data;
   const incomingAthletes = d[ATHLETE_KEY] || [];
   const incomingCheckins = d[STORAGE_KEY] || [];
+  const incomingMental = d[MENTAL_KEY] || [];
   const incomingOverrides = d[OVERRIDE_KEY] || {};
   const incomingHydration = d[HYDRATION_KEY] || {};
 
   if (mode === 'replace') {
     localStorage.setItem(ATHLETE_KEY, JSON.stringify(incomingAthletes));
     localStorage.setItem(STORAGE_KEY, JSON.stringify(incomingCheckins));
+    localStorage.setItem(MENTAL_KEY, JSON.stringify(incomingMental));
     localStorage.setItem(OVERRIDE_KEY, JSON.stringify(incomingOverrides));
     localStorage.setItem(HYDRATION_KEY, JSON.stringify(incomingHydration));
     return { mode, athletes: incomingAthletes.length, checkins: incomingCheckins.length };
@@ -373,6 +417,11 @@ export function importData(bundle, mode = 'replace') {
   let addedCheckins = 0;
   for (const c of incomingCheckins) if (!checkinIds.has(c.id)) { checkins.push(c); checkinIds.add(c.id); addedCheckins++; }
   localStorage.setItem(STORAGE_KEY, JSON.stringify(checkins));
+
+  const mental = getMentalLogs();
+  const mentalIds = new Set(mental.map((m) => m.id));
+  for (const m of incomingMental) if (!mentalIds.has(m.id)) { mental.push(m); mentalIds.add(m.id); }
+  localStorage.setItem(MENTAL_KEY, JSON.stringify(mental));
 
   const overrides = getOverrides();
   for (const [id, ov] of Object.entries(incomingOverrides)) if (!overrides[id]) overrides[id] = ov;

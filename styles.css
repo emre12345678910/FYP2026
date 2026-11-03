@@ -467,3 +467,83 @@ textarea:focus { outline: none; border-color: var(--blue); }
 .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
 .toast.red { border-left-color: var(--red); }
 .toast.yellow { border-left-color: var(--yellow); }
+
+/* ===================== Added: split input/dashboard + psych ============= */
+
+/* Read-only badge in the dashboard header */
+.ro-badge {
+  display: inline-block; margin-left: 6px; padding: 1px 7px; border-radius: 999px;
+  font-size: 10px; font-weight: 700; letter-spacing: .3px; text-transform: uppercase;
+  background: var(--panel-2); color: var(--muted); border: 1px solid var(--line); vertical-align: middle;
+}
+
+/* Cross-app link styled like a ghost button */
+a.ghost { text-decoration: none; display: inline-flex; align-items: center; }
+
+/* Physiological sub-tabs (Daily / Training) */
+.subtabs { display: flex; gap: 8px; margin: 4px 0 16px; }
+.subtab {
+  background: var(--panel-2); color: var(--muted); border: 1px solid var(--line);
+  border-radius: 999px; padding: 7px 16px; font-size: 13px; font-weight: 700; cursor: pointer;
+}
+.subtab:hover { color: var(--text); }
+.subtab.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+
+/* Profile-bar charts (RESTQ / POMS / SMS) */
+.chart .track { fill: rgba(255,255,255,.04); }
+.chart .bar-red { fill: rgba(255,93,108,.65); }
+.chart .bar-green { fill: rgba(61,220,132,.65); }
+.chart .bar-blue { fill: rgba(78,161,255,.6); }
+.chart .row-label { fill: var(--text); font-size: 10px; text-anchor: end; }
+.chart .bar-val { fill: var(--muted); font-size: 10px; text-anchor: start; }
+
+/* Psychological KPI summary strip */
+.psych-summary {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 12px; margin-bottom: 18px;
+}
+.psych-kpi {
+  background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius);
+  padding: 14px 16px; display: flex; flex-direction: column; gap: 4px;
+}
+.psych-kpi.empty { opacity: .55; }
+.psych-kpi .kpi-label { font-size: 12px; color: var(--muted); font-weight: 700; }
+.psych-kpi .kpi-value { font-size: 26px; font-weight: 800; color: var(--text); line-height: 1.1; }
+.psych-kpi .kpi-sub { font-size: 11px; color: var(--muted); }
+
+/* Mental-log questionnaire forms (input app) */
+.q-card {
+  background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius);
+  padding: 4px 16px; margin-bottom: 14px;
+}
+.q-card > summary {
+  cursor: pointer; padding: 12px 4px; font-weight: 800; list-style: none;
+  display: flex; align-items: center; gap: 8px;
+}
+.q-card > summary::-webkit-details-marker { display: none; }
+.q-card > summary::before { content: '▸'; color: var(--accent); font-size: 14px; }
+.q-card[open] > summary::before { content: '▾'; }
+.q-card .q-title { font-size: 15px; }
+.q-scale-legend { padding: 0 4px 10px; }
+.q-prompt { font-weight: 700; margin: 6px 4px 12px; color: var(--text); }
+.q-group { border-top: 1px solid var(--line); padding: 10px 0; }
+.q-group-title {
+  font-size: 13px; margin: 0 0 8px; display: flex; align-items: center; gap: 8px;
+}
+.q-group-title.stress { color: var(--red); }
+.q-group-title.recovery { color: var(--green); }
+.q-item {
+  display: flex; align-items: center; justify-content: space-between; gap: 14px;
+  padding: 7px 4px; flex-wrap: wrap;
+}
+.q-item + .q-item { border-top: 1px dashed rgba(255,255,255,.05); }
+.q-text { flex: 1 1 260px; font-size: 13px; color: var(--text); }
+.q-scale { display: flex; gap: 4px; flex-wrap: wrap; }
+.q-opt {
+  position: relative; display: inline-flex; align-items: center; justify-content: center;
+  width: 30px; height: 30px; border: 1px solid var(--line); border-radius: 8px;
+  background: var(--panel-2); color: var(--muted); font-size: 12px; font-weight: 700; cursor: pointer;
+}
+.q-opt input { position: absolute; opacity: 0; inset: 0; cursor: pointer; }
+.q-opt:hover { color: var(--text); border-color: var(--accent); }
+.q-opt:has(input:checked) { background: var(--accent); color: #fff; border-color: var(--accent); }
