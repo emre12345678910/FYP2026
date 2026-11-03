@@ -1,21 +1,50 @@
 # Eastside FC — Rehab & Return-to-Play Monitor
 
-A practical physiological monitoring and Return-to-Play (RTP) dashboard for Eastside Fight Club.
-**Zero dependencies, zero build step** — just open `index.html` in a browser. Data persists in the
-browser's `localStorage` and every check-in is auto-timestamped in **Singapore Time (`Asia/Singapore`, UTC+8)**.
+A physiological **and** psychological monitoring and Return-to-Play (RTP) system for Eastside Fight Club.
+**Zero dependencies, zero build step.** Data persists in the browser's `localStorage` and every entry is
+auto-timestamped in **Singapore Time (`Asia/Singapore`, UTC+8)**.
+
+## Two apps, one data store
+
+The project is split into **two pages** that share the same code and `localStorage`:
+
+| Page | Who | Purpose |
+|---|---|---|
+| **`input.html`** | Athletes | **Input app** — three logs: **Daily**, **Training**, **Mental** |
+| **`index.html`** | Coach | **Dashboard** (read-only / output only) — **Physiological** tab (sub-tabs *Daily* / *Training*) + **Psychological** tab |
+
+The input app writes; the dashboard reads. Because they share the same browser origin + `localStorage`,
+data entered on a device shows up on that device's dashboard automatically. To move data between devices,
+use **⬇ Export / ⬆ Import** (true cross-device sync would need a backend).
 
 ## Run it
 
-Because the app uses ES modules, open it via a local web server (opening the file directly with
-`file://` can block module loading in some browsers):
+Because the apps use ES modules, serve them over a local web server (not `file://`):
 
 ```bash
 # from this folder
 python3 -m http.server 8000
-# then visit http://localhost:8000
+# Dashboard (coach):      http://localhost:8000/index.html
+# Input app (athletes):   http://localhost:8000/input.html
 ```
 
 Any static server works. No internet connection or packages are required.
+
+## Psychological monitoring (Mental log)
+
+The Mental log captures four aspects, each via a validated sport-psychology instrument. The dashboard
+scores every submission and charts the results on the coach's **Psychological** tab:
+
+| Aspect | Instrument | Dashboard output |
+|---|---|---|
+| **Stress** | **RESTQ-Sport** (Recovery–Stress Questionnaire) | Scale profile chart (stress vs recovery) + stress/recovery trend |
+| **Mood** | **POMS** (Profile of Mood States) | Mood profile + Total Mood Disturbance (TMD) trend |
+| **Confidence** | **Vealey's TSCI** (Trait Sport-Confidence Inventory) | Confidence (1–9) trend |
+| **Motivation** | **SMS-6** (Sport Motivation Scale) | Subscale profile + Relative Autonomy Index trend |
+
+> ⚠️ **Licensing:** RESTQ-Sport, POMS and SMS are copyrighted instruments. This repo ships **representative
+> placeholder item wording** with the correct subscale structure, response scales and scoring. **Replace the
+> item text in `js/psych.js` with the official licensed wording before any real-world or research use.**
 
 ## What it tracks
 
@@ -58,10 +87,13 @@ Derived from the worst active alert: 🟢 **Cleared** · 🟡 **Modified** · �
 ## Project layout
 
 ```
-index.html        # shell
+index.html        # Coach Dashboard shell (read-only)
+input.html        # Athlete Input app shell
 styles.css        # dark fight-club theme
-js/store.js       # persistence, SGT timestamping, derived-metric math
-js/alerts.js      # alert engine + RTP status tiers
-js/charts.js      # tiny hand-rolled SVG charts (no chart library)
-js/app.js         # UI controller + views
+js/store.js       # persistence (incl. mental logs), SGT timestamping, derived-metric math
+js/alerts.js      # physiological alert engine + RTP status tiers
+js/charts.js      # tiny hand-rolled SVG charts (physio + psych), no chart library
+js/psych.js       # questionnaire definitions (RESTQ/POMS/TSCI/SMS-6) + scoring
+js/input.js       # Athlete Input controller (Daily / Training / Mental logs)
+js/dashboard.js   # Coach Dashboard controller (Physiological + Psychological tabs)
 ```
