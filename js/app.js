@@ -6,7 +6,7 @@ import {
   getHydrationToday, addBottle, removeBottle, DEFAULT_BOTTLE_ML,
   hydrationGoalMl, exerciseMinutesToday,
   exportData, importData,
-  COMBAT_TYPES, BP_TIMINGS, INTENSITY_LEVELS, HIGH_INTENSITY, MACRO_TAGS, PAIN_SYMPTOMS,
+  COMBAT_TYPES, BP_TIMINGS, INTENSITY_LEVELS, PAIN_SYMPTOMS,
 } from './store.js';
 
 // Athlete lookup helper (for ROM baseline access at render time).
@@ -266,7 +266,7 @@ function sleepDisplay(c) {
 import { evaluateAthlete, readinessTier, evaluateReadinessStatus, tierMeta } from './alerts.js';
 // NOTE: alerts.js import is placed above the helpers that use it (hoisted ES import).
 import {
-  romChart, srpeChart, painChart, hydrationChart, sleepChart, nutritionChart,
+  romChart, srpeChart, painChart, hydrationChart, sleepChart,
 } from './charts.js';
 
 const root = document.getElementById('app');
@@ -673,19 +673,6 @@ function athleteView(athletes) {
         <small class="hint">Tap “now” at bedtime and again on waking — hours are calculated automatically (overnight supported).</small>
       </fieldset>
 
-      <fieldset class="wide">
-        <legend>🍽️ Qualitative Nutrition Log</legend>
-        <label>Pre-workout meal<input type="text" name="pre_workout_meal" placeholder="e.g. Chicken rice, electrolyte water, 2.5h before"></label>
-        <label>Post-workout meal<input type="text" name="post_workout_meal" placeholder="e.g. Whey shake, banana, rice with beef"></label>
-        <label>Main meal<input type="text" name="main_meal" placeholder="e.g. Grilled fish, veg, sweet potato"></label>
-        <label class="check-inline">Fueled before session (ate 2–3 h prior)?
-          <input type="checkbox" name="fueled_before_session">
-        </label>
-        <div class="tag-row" id="macro-tags">
-          ${MACRO_TAGS.map((t) => `<label class="tag"><input type="checkbox" name="quality_tag" value="${t}">${t}</label>`).join('')}
-        </div>
-      </fieldset>
-
       <div class="form-actions">
         <button type="submit" class="primary">Save check-in</button>
         <span id="save-msg" class="save-msg"></span>
@@ -712,8 +699,7 @@ function athleteCharts() {
     <h2>📊 My Progress <span class="muted small">· your personal trends across all metrics</span></h2>
     <div class="charts">${renderCharts(a, checkins)}</div>
   </section>
-  ${napLog(checkins)}
-  ${dietLog(checkins)}`;
+  ${napLog(checkins)}`;
 }
 
 // Timestamped Body Mass log — every body-mass recording with its SGT time.
@@ -789,45 +775,6 @@ function napLog(checkins) {
         <tbody>${rows}</tbody>
       </table>
     </div>` : '<p class="muted">No naps logged yet. Log a nap by selecting “Nap” in the Sleep section.</p>'}
-  </section>`;
-}
-
-// Timestamped diet / nutrition log sheet (most recent first). Shows each
-// logged meal entry with its SGT time, meal window, macro tags and fueling.
-function dietLog(checkins) {
-  // Flatten each check-in's nutrition_log into per-meal rows, keeping the
-  // check-in's SGT timestamp against every meal entry.
-  const rows = [];
-  checkins.slice().reverse().forEach((c) => {
-    const nl = c.nutrition_log || {};
-    const ts = formatSgt(c.timestampUtc);
-    const tags = (nl.quality_tags || []).map((m) => `<span class="pill">${esc(m)}</span>`).join(' ');
-    const meals = [
-      ['Pre-workout', nl.pre_workout_meal],
-      ['Post-workout', nl.post_workout_meal],
-      ['Main meal', nl.main_meal],
-    ].filter(([, v]) => v && v.trim());
-    meals.forEach(([window, desc], i) => {
-      rows.push(`<tr>
-        <td>${i === 0 ? esc(ts) : ''}</td>
-        <td><span class="pill">${window}</span></td>
-        <td>${esc(desc)}</td>
-        <td>${window === 'Pre-workout' ? (nl.fueled_before_session ? '<span class="pill ok">ate 2–3h before</span>' : '<span class="pill warn">not timely</span>') : ''}</td>
-        <td>${i === 0 ? (tags || '—') : ''}</td>
-      </tr>`);
-    });
-  });
-
-  return `
-  <section class="panel">
-    <h3>🍽️ Diet Log <span class="muted small">· every meal entry, timestamped (SGT)</span></h3>
-    ${rows.length ? `
-    <div class="table-wrap">
-      <table class="data-table">
-        <thead><tr><th>Time (SGT)</th><th>Window</th><th>Meal</th><th>Fueling</th><th>Tags</th></tr></thead>
-        <tbody>${rows.join('')}</tbody>
-      </table>
-    </div>` : '<p class="muted">No meals logged yet. Add meals in the Nutrition section of a check-in.</p>'}
   </section>`;
 }
 
@@ -1015,13 +962,6 @@ function bindAthleteForm() {
       sleep_minutes: num('sleep_minutes'),
       sleep_start: str('sleep_start') || null,
       sleep_end: str('sleep_end') || null,
-      nutrition_log: {
-        pre_workout_meal: str('pre_workout_meal'),
-        post_workout_meal: str('post_workout_meal'),
-        main_meal: str('main_meal'),
-        quality_tags: f.getAll('quality_tag'),
-        fueled_before_session: f.get('fueled_before_session') === 'on',
-      },
     };
     saveCheckin(input, athleteById(state.selectedAthlete));
 
@@ -1123,17 +1063,7 @@ function buildChartSeries(a, checkins) {
     hours: avg(d.items.filter((c) => c.sleep_type !== 'Nap'), (c) => c.sleep_hours),
   })).filter((d) => d.hours != null);
 
-  const nutSeries = days.map((d) => ({
-    label: d.label,
-    workload: avg(d.items, (c) => c.workload),
-    // a day counts as fueled if every logged session that day was fueled in time
-    fueled: d.items.filter((c) => c.workload != null).every((c) => {
-      const nl = c.nutrition_log || {};
-      return !!(nl.pre_workout_meal && nl.pre_workout_meal.trim()) && nl.fueled_before_session === true;
-    }),
-  })).filter((d) => d.workload != null);
-
-  return { romSeries, painSeries, hydSeries, sleepSeries, nutSeries };
+  return { romSeries, painSeries, hydSeries, sleepSeries };
 }
 
 // Renders the analytics charts (line & bar) for an athlete. Shared by the
@@ -1145,8 +1075,7 @@ function renderCharts(a, checkins) {
     <div class="chart-card">${srpeChart(s.painSeries)}</div>
     <div class="chart-card">${painChart(s.painSeries)}</div>
     <div class="chart-card">${hydrationChart(s.hydSeries)}</div>
-    <div class="chart-card">${sleepChart(s.sleepSeries)}</div>
-    <div class="chart-card">${nutritionChart(s.nutSeries)}</div>`;
+    <div class="chart-card">${sleepChart(s.sleepSeries)}</div>`;
 }
 
 /* ------------------------------ Coach view ------------------------------- */
@@ -1215,21 +1144,6 @@ function coachDetail() {
         <div><strong>${esc(al.title)}</strong><br><span class="muted">${esc(al.detail)}</span></div></li>`).join('')
     : '<li class="alert info"><span>🟢</span><div><strong>No active alerts</strong></div></li>';
 
-  const foodRows = checkins.filter((c) => {
-    const nl = c.nutrition_log || {};
-    return nl.pre_workout_meal || nl.post_workout_meal || nl.main_meal;
-  }).slice().reverse().slice(0, 6).map((c) => {
-    const nl = c.nutrition_log || {};
-    return `
-    <tr>
-      <td>${esc(formatSgt(c.timestampUtc))}</td>
-      <td>${esc(nl.pre_workout_meal || '—')} ${nl.fueled_before_session ? '<span class="pill ok">timely</span>' : (nl.pre_workout_meal ? '<span class="pill warn">late</span>' : '')}</td>
-      <td>${esc(nl.post_workout_meal || '—')}</td>
-      <td>${esc(nl.main_meal || '—')}</td>
-      <td>${(nl.quality_tags || []).map((m) => `<span class="pill">${esc(m)}</span>`).join(' ') || '—'}</td>
-    </tr>`;
-  }).join('');
-
   const ovNote = getOverride(a.id);
   return `
     <div class="detail-head">
@@ -1256,16 +1170,6 @@ function coachDetail() {
         <ul class="alert-list">${alertList}</ul>
       </aside>
     </div>
-
-    <section class="panel">
-      <h3>🍽️ Food &amp; Fueling Log</h3>
-      <div class="table-wrap">
-        <table class="data-table">
-          <thead><tr><th>Timestamp (SGT)</th><th>Pre-workout</th><th>Post-workout</th><th>Main meal</th><th>Tags</th></tr></thead>
-          <tbody>${foodRows || '<tr><td colspan="5" class="muted">No food logs yet</td></tr>'}</tbody>
-        </table>
-      </div>
-    </section>
 
     <section class="panel">
       <h3>Raw metrics</h3>

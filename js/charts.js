@@ -155,25 +155,3 @@ export function sleepChart(series) {
     `<path d="${path(pts)}" class="line-green"/>` + dots
   );
 }
-
-/* 5. Nutrition & fueling overview — workload bars + fueled/under markers */
-export function nutritionChart(series) {
-  // series: [{ label, workload, fueled }]
-  if (!series.length) return emptyChart('No session/nutrition data yet');
-  const labels = series.map((s) => s.label);
-  const max = Math.max(10, ...series.map((s) => s.workload ?? 0));
-  const min = 0;
-  const inner = H - P.t - P.b;
-  const bw = Math.max(6, ((W - P.l - P.r) / series.length) * 0.5);
-  let bars = '';
-  series.forEach((s, i) => {
-    const x = scaleX(i, series.length);
-    const y = scaleY(s.workload ?? 0, min, max);
-    bars += `<rect x="${x - bw / 2}" y="${y}" width="${bw}" height="${P.t + inner - y}" class="${s.fueled ? 'bar-fueled' : 'bar-underfuel'}"/>`;
-    bars += `<text x="${x}" y="${y - 4}" class="barlabel">${s.fueled ? '✓' : '✕'}</text>`;
-  });
-  return svgWrap(
-    axes(min, max, labels, { yFmt: (v) => v.toFixed(0), title: 'Session Workload (sRPE×min) · ✓ fueled / ✕ under-fueled' }) +
-    bars
-  );
-}

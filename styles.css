@@ -175,8 +175,6 @@ input:focus, select:focus { outline: none; border-color: var(--blue); }
 .chart .bar-srpe { fill: rgba(78,161,255,.55); }
 .chart .bar-pre { fill: #3a6ea5; }
 .chart .bar-post { fill: #8fc0ff; }
-.chart .bar-fueled { fill: rgba(61,220,132,.6); }
-.chart .bar-underfuel { fill: rgba(255,93,108,.6); }
 .chart .barlabel { fill: var(--text); font-size: 10px; text-anchor: middle; }
 .chart .empty { fill: var(--muted); font-size: 13px; text-anchor: middle; }
 

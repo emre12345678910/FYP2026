@@ -27,7 +27,6 @@ Any static server works. No internet connection or packages are required.
 | **Pain & Injury** | NPRS (0–10) + body-area/symptom note |
 | **Range of Motion** | Goniometric joint angle (°) mapped to **% of athlete baseline** |
 | **Sleep** | Duration (hrs), quality (1–10), tier (Poor / Average / Restorative) |
-| **Nutrition** | Pre/Post/Main meal logs, macro tags, "ate 2–3 h before training?" fueling flag |
 
 ## Dashboards
 
@@ -37,8 +36,7 @@ Any static server works. No internet connection or packages are required.
   - **Pain & intensity overlay** (sRPE bars + pain NPRS line)
   - **Hydration & weight-loss** pre/post bars
   - **Sleep vs recovery matrix** (duration × quality, coloured by readiness)
-  - **Nutrition & fueling overview** (workload bars marked fueled ✓ / under-fueled ✕)
-  - Full food log and raw-metrics tables
+  - Raw-metrics tables
 
 ## Automated alerts
 
@@ -49,7 +47,6 @@ Any static server works. No internet connection or packages are required.
 | 🔴 Pain spike | Pain rises **≥ 2** points vs previous check-in |
 | 🟡 Sleep deprivation | Sleep **< 6 h** |
 | 🔴 Severe sleep | **< 5 h** on **2 consecutive days** |
-| 🟡 Under-fueling | High-intensity session (Sparring / Max Load / Conditioning) without a timely pre-workout meal |
 
 ## Status tiers
 
