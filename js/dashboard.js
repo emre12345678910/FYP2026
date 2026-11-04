@@ -20,7 +20,12 @@ import {
 
 const root = document.getElementById('app');
 // tab: 'physio' | 'psych' ; physioSub: 'daily' | 'training'
-let state = { tab: 'physio', physioSub: 'daily', trendsSub: 'all', selectedAthlete: null, rosterFilter: 'All', selectedMentalLog: null };
+let state = {
+  tab: 'physio', physioSub: 'daily',
+  // Weekly Trends: category (psych | physio) + a per-metric sub-tab for each.
+  trendsCat: 'psych', trendsSub: 'all', trendsPhysioSub: 'all',
+  selectedAthlete: null, rosterFilter: 'All', selectedMentalLog: null,
+};
 
 function athleteById(id) { return getAthletes().find((a) => a.id === id); }
 function esc(s) {
@@ -93,6 +98,12 @@ function bindShell() {
 
   root.querySelectorAll('[data-tsub]').forEach((b) =>
     b.addEventListener('click', () => { state.trendsSub = b.dataset.tsub; render(); }));
+
+  root.querySelectorAll('[data-tcat]').forEach((b) =>
+    b.addEventListener('click', () => { state.trendsCat = b.dataset.tcat; render(); }));
+
+  root.querySelectorAll('[data-tpsub]').forEach((b) =>
+    b.addEventListener('click', () => { state.trendsPhysioSub = b.dataset.tpsub; render(); }));
 
   root.querySelectorAll('[data-mlog]').forEach((r) =>
     r.addEventListener('click', () => { state.selectedMentalLog = r.dataset.mlog; render(); }));
@@ -326,9 +337,20 @@ function trainingPanel(a, checkins) {
 }
 
 /* ---------------------------- Weekly Trends tab -------------------------- */
-// Each questionnaire's "total score" trended week-over-week. When a week has
-// more than one submission, the week's value is the average of those scores.
+// Top level: choose a category (Psychological / Physiological); each category
+// then has its own per-metric sub-tabs. Everything is trended per ISO week.
 function trendsPanel(a) {
+  const catBar = `
+    <div class="subtabs cat-tabs">
+      <button class="subtab ${state.trendsCat === 'psych' ? 'active' : ''}" data-tcat="psych">🧠 Psychological</button>
+      <button class="subtab ${state.trendsCat === 'physio' ? 'active' : ''}" data-tcat="physio">🫀 Physiological</button>
+    </div>`;
+  const body = state.trendsCat === 'physio' ? physioTrends(a) : psychTrends(a);
+  return catBar + body;
+}
+
+// --- Psychological weekly trends (per questionnaire total score) ---
+function psychTrends(a) {
   const logs = mentalLogsForAthlete(a.id);
   if (!logs.length) return '<section class="panel"><p class="muted">No psychological (mental log) data yet for this athlete, so there are no weekly trends to show. Athletes complete these in the Mental log of the Input app.</p></section>';
 
@@ -400,6 +422,77 @@ function trendsPanel(a) {
 
   return `
     <div class="muted small view-hint">Weekly trend of each questionnaire's <strong>total score</strong> (${weekList.length} week${weekList.length === 1 ? '' : 's'} with data). A week with multiple submissions is averaged.</div>
+    ${subBar}
+    ${body}`;
+}
+
+// --- Physiological weekly trends (key metrics averaged per ISO week) ---
+function physioTrends(a) {
+  const checkins = checkinsForAthlete(a.id);
+  if (!checkins.length) return '<section class="panel"><p class="muted">No physiological data yet for this athlete, so there are no weekly trends to show. Athletes log these in the Daily &amp; Training logs of the Input app.</p></section>';
+
+  // Group check-ins by ISO week (SGT-anchored).
+  const weeks = new Map();
+  for (const c of checkins) {
+    const w = sgtWeek(c.timestampUtc);
+    if (!weeks.has(w.key)) weeks.set(w.key, { ...w, items: [] });
+    weeks.get(w.key).items.push(c);
+  }
+  const weekList = [...weeks.values()].sort((x, y) => (x.key < y.key ? -1 : 1));
+
+  // Weekly average of a per-check-in field (ignoring missing values).
+  const weekAvg = (wk, pick) => {
+    const vals = wk.items.map(pick).filter((v) => v != null);
+    return vals.length ? vals.reduce((s, v) => s + v, 0) / vals.length : null;
+  };
+
+  // One descriptor per physiological metric: how to pull its value + chart it.
+  const MS = [
+    { sub: 'rom', label: '📐 ROM %', pick: (c) => (c.rom_percentage != null ? c.rom_percentage : romPct(c.goniometer_degrees, a.romBaseline)), dp: 0,
+      opts: { title: 'ROM % of baseline (higher is better)', min: 0, max: 100, ref: 60, refLabel: '60% alert', unit: '%', emptyMsg: 'No ROM data yet' } },
+    { sub: 'pain', label: '🤕 Pain (NPRS)', pick: (c) => c.pain_score, dp: 1,
+      opts: { title: 'Pain — NPRS 0–10 (lower is better)', min: 0, max: 10, ref: 3, refLabel: 'watch ≥3', emptyMsg: 'No pain data yet' } },
+    { sub: 'load', label: '🔥 Workload', pick: (c) => c.workload, dp: 0,
+      opts: { title: 'Training workload — sRPE × min (per session)', emptyMsg: 'No training-load data yet' } },
+    { sub: 'sleep', label: '😴 Sleep (h)', pick: (c) => (c.sleep_type !== 'Nap' ? c.sleep_hours : null), dp: 1,
+      opts: { title: 'Overnight sleep — hours (7–10 h recommended)', min: 0, max: 12, ref: 7, refLabel: '7 h', emptyMsg: 'No sleep data yet' } },
+    { sub: 'mass', label: '⚖️ Body mass', pick: (c) => c.body_mass_kg, dp: 1,
+      opts: { title: 'Body mass — kg', emptyMsg: 'No body-mass data yet' } },
+    { sub: 'fluid', label: '💧 Fluid loss %', pick: (c) => fluidLossPct(c.pre_weight_kg, c.post_weight_kg), dp: 1,
+      opts: { title: 'Acute fluid loss — % (limit 2%)', min: 0, max: 4, ref: 2, refLabel: '2% limit', unit: '%', emptyMsg: 'No pre/post weight data yet' } },
+  ];
+
+  const subs = [{ sub: 'all', label: '📊 All' }, ...MS.map((m) => ({ sub: m.sub, label: m.label }))];
+  const subBar = `<div class="subtabs">${subs.map((s) =>
+    `<button class="subtab ${state.trendsPhysioSub === s.sub ? 'active' : ''}" data-tpsub="${s.sub}">${s.label}</button>`).join('')}</div>`;
+
+  const mkSeries = (pick) => weekList.map((wk) => ({ label: wk.label, value: weekAvg(wk, pick) }));
+  const chartCard = (m) => `<div class="chart-card">${weeklyTrendChart(mkSeries(m.pick), m.opts)}</div>`;
+  const fmt = (v, dp) => (v == null ? '—' : v.toFixed(dp));
+
+  const totalsTable = (list) => `
+    <div class="table-wrap"><table class="data-table">
+      <thead><tr><th>Week</th><th>#</th>${list.map((m) => `<th title="${esc(m.opts.title)}">${esc(m.label.replace(/^[^ ]+ /, ''))}</th>`).join('')}</tr></thead>
+      <tbody>${weekList.slice().reverse().map((wk) => `
+        <tr><td>${esc(wk.label)} <span class="muted small">(wk of ${esc(wk.start)})</span></td>
+        <td>${wk.items.length}</td>
+        ${list.map((m) => `<td>${fmt(weekAvg(wk, m.pick), m.dp)}${m.opts.unit === '%' && weekAvg(wk, m.pick) != null ? '%' : ''}</td>`).join('')}</tr>`).join('')}
+      </tbody></table></div>`;
+
+  let body;
+  if (state.trendsPhysioSub === 'all') {
+    body = `
+      <div class="charts">${MS.map(chartCard).join('')}</div>
+      <section class="panel"><h3>📈 Physiological weekly averages — ${esc(a.name)}</h3>${totalsTable(MS)}</section>`;
+  } else {
+    const m = MS.find((x) => x.sub === state.trendsPhysioSub) || MS[0];
+    body = `
+      <div class="charts">${chartCard(m)}</div>
+      <section class="panel"><h3>📈 ${esc(m.label)} — weekly averages · ${esc(a.name)}</h3>${totalsTable([m])}</section>`;
+  }
+
+  return `
+    <div class="muted small view-hint">Weekly average of each physiological metric (${weekList.length} week${weekList.length === 1 ? '' : 's'} with data). Multiple logs in a week are averaged.</div>
     ${subBar}
     ${body}`;
 }
