@@ -245,6 +245,7 @@ export function saveMentalLog(input) {
     sgtDay: ts.date,
     athleteId: input.athleteId,
     responses: input.responses || {},
+    comments: (input.comments || '').trim(),   // optional free-form note for the coach
   };
   logs.push(entry);
   persist(MENTAL_KEY, JSON.stringify(logs));

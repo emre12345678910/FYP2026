@@ -332,7 +332,8 @@ function mentalLog(a) {
   const prior = mentalLogsForAthlete(a.id);
   const priorRows = prior.slice().reverse().slice(0, 8).map((m) => {
     const done = Object.keys(QUESTIONNAIRES).filter((k) => m.responses && m.responses[k] && Object.keys(m.responses[k]).length);
-    return `<tr><td>${esc(formatSgt(m.timestampUtc))}</td><td>${done.map((k) => `<span class="pill">${QUESTIONNAIRES[k].shortTitle}</span>`).join(' ') || '—'}</td></tr>`;
+    const hasNote = m.comments && m.comments.trim();
+    return `<tr><td>${esc(formatSgt(m.timestampUtc))}</td><td>${done.map((k) => `<span class="pill">${QUESTIONNAIRES[k].shortTitle}</span>`).join(' ') || '—'}${hasNote ? ' <span class="pill note-pill">💬 note</span>' : ''}</td></tr>`;
   }).join('');
 
   return `
@@ -344,6 +345,14 @@ function mentalLog(a) {
     </div>
     <form id="mental-form">
       ${Object.values(QUESTIONNAIRES).map(questionnaireBlock).join('')}
+
+      <fieldset class="wide comments-fieldset">
+        <legend>💬 Anything you'd like the coach to know?</legend>
+        <p class="muted small">Optional and free-form. Use this for anything that's hard to say out loud — how you're really feeling, something going on outside training, a worry, or something you'd like help with. The coach sees this with your mental log.</p>
+        <label class="sr-label" for="mental-comments">Message to coach</label>
+        <textarea id="mental-comments" name="comments" rows="4" placeholder="Write anything here… (leave blank if nothing to add)"></textarea>
+      </fieldset>
+
       <div class="form-actions">
         <button type="submit" class="primary">Save mental log</button>
         <span id="save-msg" class="save-msg"></span>
@@ -562,10 +571,13 @@ function bindMental(a) {
       if (!QUESTIONNAIRES[qKey]) continue;
       (responses[qKey] = responses[qKey] || {})[key] = Number(raw);
     }
+    const comments = (f.get('comments') || '').toString().trim();
     const answered = Object.keys(responses).length;
-    if (!answered) { alert('Answer at least one questionnaire before saving.'); return; }
-    saveMentalLog({ athleteId: a.id, responses });
-    flashSaved(form, `✓ Mental log saved — ${answered} questionnaire(s)`);
+    if (!answered && !comments) { alert('Answer at least one questionnaire, or write a note to the coach, before saving.'); return; }
+    saveMentalLog({ athleteId: a.id, responses, comments });
+    flashSaved(form, answered
+      ? `✓ Mental log saved — ${answered} questionnaire(s)${comments ? ' + note' : ''}`
+      : '✓ Note to coach saved');
   });
 }
 
