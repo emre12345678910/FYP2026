@@ -269,18 +269,30 @@ function trainingLog(a) {
 
 /* ============================== MENTAL LOG ============================== */
 function questionnaireBlock(q) {
-  const scaleLegend = q.scaleResponses.map((r) => `${r.v} = ${r.label}`).join(' · ');
+  // A scale is "worded" when its options carry meaningful text (RESTQ, POMS);
+  // numeric scales (TSCI 1–9, SMS-II 1–7) instead show end-anchors.
+  const worded = q.scaleResponses.some((r) => r.label && r.label !== String(r.v));
+  const scaleLegend = worded
+    ? q.scaleResponses.map((r) => `${r.v} = ${r.label}`).join('  ·  ')
+    : `${q.min} = ${q.anchors ? q.anchors.low : 'low'}  …  ${q.max} = ${q.anchors ? q.anchors.high : 'high'}`;
   let body = '';
 
+  // Each response option shows BOTH the number and its word so the scale is
+  // obvious at a glance (no hover needed). Numeric scales show the number with
+  // the end-anchor words printed beneath the row.
   const renderItem = (label, id) => `
     <div class="q-item">
       <span class="q-text">${esc(label)}</span>
-      <div class="q-scale">
-        ${q.scaleResponses.map((r) => `
-          <label class="q-opt" title="${esc(r.label)}">
-            <input type="radio" name="${id}" value="${r.v}" required>
-            <span>${r.v}</span>
-          </label>`).join('')}
+      <div class="q-answer">
+        <div class="q-scale ${worded ? 'worded' : 'numeric'}">
+          ${q.scaleResponses.map((r) => `
+            <label class="q-opt" title="${esc(r.label)}">
+              <input type="radio" name="${id}" value="${r.v}" required>
+              <span class="q-opt-num">${r.v}</span>
+              ${worded ? `<span class="q-opt-word">${esc(r.label)}</span>` : ''}
+            </label>`).join('')}
+        </div>
+        ${worded ? '' : `<div class="q-anchors"><span>${esc(q.anchors ? q.anchors.low : 'low')}</span><span>${esc(q.anchors ? q.anchors.high : 'high')}</span></div>`}
       </div>
     </div>`;
 
@@ -311,7 +323,7 @@ function questionnaireBlock(q) {
   return `
     <details class="q-card" ${q.key === 'restq' ? 'open' : ''}>
       <summary><span class="q-title">${esc(q.title)}</span></summary>
-      <div class="q-scale-legend muted small">Scale: ${esc(scaleLegend)}</div>
+      <div class="q-scale-legend"><span class="legend-tag">Scale</span> ${esc(scaleLegend)}</div>
       ${body}
     </details>`;
 }

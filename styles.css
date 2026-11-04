@@ -524,7 +524,15 @@ a.ghost { text-decoration: none; display: inline-flex; align-items: center; }
 .q-card > summary::before { content: '▸'; color: var(--accent); font-size: 14px; }
 .q-card[open] > summary::before { content: '▾'; }
 .q-card .q-title { font-size: 15px; }
-.q-scale-legend { padding: 0 4px 10px; }
+.q-scale-legend {
+  padding: 8px 10px; margin: 0 0 10px; font-size: 12px; color: var(--text);
+  background: var(--panel-2); border: 1px solid var(--line); border-radius: 8px;
+}
+.q-scale-legend .legend-tag {
+  display: inline-block; margin-right: 6px; padding: 1px 7px; border-radius: 999px;
+  font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: .4px;
+  background: var(--accent); color: #fff;
+}
 .q-prompt { font-weight: 700; margin: 6px 4px 12px; color: var(--text); }
 .q-group { border-top: 1px solid var(--line); padding: 10px 0; }
 .q-group-title {
@@ -533,20 +541,42 @@ a.ghost { text-decoration: none; display: inline-flex; align-items: center; }
 .q-group-title.stress { color: var(--red); }
 .q-group-title.recovery { color: var(--green); }
 .q-item {
-  display: flex; align-items: center; justify-content: space-between; gap: 14px;
-  padding: 7px 4px; flex-wrap: wrap;
+  display: flex; align-items: flex-start; justify-content: space-between; gap: 14px;
+  padding: 10px 4px; flex-wrap: wrap;
 }
 .q-item + .q-item { border-top: 1px dashed rgba(255,255,255,.05); }
-.q-text { flex: 1 1 260px; font-size: 13px; color: var(--text); }
-.q-scale { display: flex; gap: 4px; flex-wrap: wrap; }
+.q-text { flex: 1 1 220px; font-size: 13px; color: var(--text); padding-top: 4px; }
+.q-answer { flex: 0 0 auto; }
+.q-scale { display: flex; gap: 6px; flex-wrap: wrap; }
+
+/* Base option button */
 .q-opt {
-  position: relative; display: inline-flex; align-items: center; justify-content: center;
-  width: 30px; height: 30px; border: 1px solid var(--line); border-radius: 8px;
-  background: var(--panel-2); color: var(--muted); font-size: 12px; font-weight: 700; cursor: pointer;
+  position: relative; display: inline-flex; flex-direction: column; align-items: center;
+  justify-content: center; gap: 2px; border: 1px solid var(--line); border-radius: 8px;
+  background: var(--panel-2); color: var(--muted); cursor: pointer;
+  transition: background .12s, border-color .12s, color .12s;
 }
 .q-opt input { position: absolute; opacity: 0; inset: 0; cursor: pointer; }
-.q-opt:hover { color: var(--text); border-color: var(--accent); }
-.q-opt:has(input:checked) { background: var(--accent); color: #fff; border-color: var(--accent); }
+.q-opt-num { font-size: 13px; font-weight: 800; line-height: 1; }
+.q-opt-word { font-size: 10px; font-weight: 600; line-height: 1.1; text-align: center; }
+.q-opt:hover { color: var(--text); border-color: var(--accent); background: rgba(78,161,255,.1); }
+.q-opt:has(input:checked) { background: var(--accent); color: #fff; border-color: var(--accent); box-shadow: 0 0 0 2px rgba(78,161,255,.35); }
+
+/* Worded scales (RESTQ, POMS): wider buttons that show the word under the number */
+.q-scale.worded .q-opt { width: 74px; min-height: 46px; padding: 5px 4px; }
+/* Numeric scales (TSCI, SMS-II): compact number squares + end-anchor words below */
+.q-scale.numeric .q-opt { width: 34px; height: 34px; }
+.q-anchors {
+  display: flex; justify-content: space-between; margin-top: 5px;
+  font-size: 10px; color: var(--muted); max-width: 360px;
+}
+.q-anchors span:first-child { text-align: left; }
+.q-anchors span:last-child { text-align: right; }
+
+@media (max-width: 640px) {
+  .q-item { flex-direction: column; align-items: stretch; }
+  .q-scale.worded .q-opt { width: auto; flex: 1 1 60px; }
+}
 
 /* Clickable mental-log history rows (dashboard "look back") */
 .history-row { cursor: pointer; }

@@ -28,11 +28,13 @@ export const POMS_SCALE = [
   { v: 3, label: 'quite a bit' }, { v: 4, label: 'extremely' },
 ];
 
-// TSCI (Vealey): 1 (low) … 9 (high)
+// TSCI (Vealey): 1 (low) … 9 (high). Numeric scale with labelled end-anchors.
 export const TSCI_SCALE = Array.from({ length: 9 }, (_, i) => ({ v: i + 1, label: String(i + 1) }));
+export const TSCI_ANCHORS = { low: 'low confidence', high: 'high confidence' };
 
-// SMS-II: 1 (does not correspond at all) … 7 (corresponds exactly)
+// SMS-II: 1 (does not correspond at all) … 7 (corresponds exactly).
 export const SMS_SCALE = Array.from({ length: 7 }, (_, i) => ({ v: i + 1, label: String(i + 1) }));
+export const SMS_ANCHORS = { low: 'does not correspond at all', high: 'corresponds exactly' };
 
 /* --------------------------------------------------------------------------
  * RESTQ-Sport (Recovery–Stress Questionnaire for Athletes)
@@ -173,6 +175,7 @@ export const TSCI = {
   shortTitle: 'TSCI',
   scaleResponses: TSCI_SCALE,
   min: 1, max: 9,
+  anchors: TSCI_ANCHORS,
   prompt: 'Compared with the most confident athlete you know, rate your confidence to…',
   items: [
     'execute the skills needed to be successful.',
@@ -208,6 +211,7 @@ export const SMS = {
   shortTitle: 'SMS-II',
   scaleResponses: SMS_SCALE,
   min: 1, max: 7,
+  anchors: SMS_ANCHORS,
   prompt: 'Why do you practise your sport?',
   // ordered most self-determined → least; raiWeight used for the autonomy index
   // 3 representative items per subscale (18 total), matching the SMS-II structure

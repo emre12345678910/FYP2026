@@ -20,7 +20,7 @@ import {
 
 const root = document.getElementById('app');
 // tab: 'physio' | 'psych' ; physioSub: 'daily' | 'training'
-let state = { tab: 'physio', physioSub: 'daily', selectedAthlete: null, rosterFilter: 'All', selectedMentalLog: null };
+let state = { tab: 'physio', physioSub: 'daily', trendsSub: 'all', selectedAthlete: null, rosterFilter: 'All', selectedMentalLog: null };
 
 function athleteById(id) { return getAthletes().find((a) => a.id === id); }
 function esc(s) {
@@ -90,6 +90,9 @@ function bindShell() {
 
   root.querySelectorAll('[data-sub]').forEach((b) =>
     b.addEventListener('click', () => { state.physioSub = b.dataset.sub; render(); }));
+
+  root.querySelectorAll('[data-tsub]').forEach((b) =>
+    b.addEventListener('click', () => { state.trendsSub = b.dataset.tsub; render(); }));
 
   root.querySelectorAll('[data-mlog]').forEach((r) =>
     r.addEventListener('click', () => { state.selectedMentalLog = r.dataset.mlog; render(); }));
@@ -353,46 +356,52 @@ function trendsPanel(a) {
   };
 
   const mkSeries = (fn) => weekList.map((wk) => ({ label: wk.label, value: weekAvg(wk, fn) }));
-  const restqSeries = mkSeries(totals.restq);
-  const pomsSeries = mkSeries(totals.poms);
-  const tsciSeries = mkSeries(totals.tsci);
-  const smsSeries = mkSeries(totals.sms);
 
-  const cards = [
-    weeklyTrendChart(restqSeries, { title: 'RESTQ total — Recovery − Stress (higher is better)', min: -6, max: 6, ref: 0, refLabel: 'balanced', emptyMsg: 'No RESTQ submissions yet' }),
-    weeklyTrendChart(pomsSeries, { title: 'POMS total — Mood Disturbance (lower is better)', ref: 100, refLabel: 'neutral 100', emptyMsg: 'No POMS submissions yet' }),
-    weeklyTrendChart(tsciSeries, { title: 'TSCI total — Sport-Confidence (1–9, higher is better)', min: 1, max: 9, ref: 5, refLabel: 'midpoint 5', emptyMsg: 'No TSCI submissions yet' }),
-    weeklyTrendChart(smsSeries, { title: 'SMS-II total — Relative Autonomy Index (higher is better)', ref: 0, refLabel: '0', emptyMsg: 'No SMS-II submissions yet' }),
-  ].map((c) => `<div class="chart-card">${c}</div>`).join('');
+  // One descriptor per questionnaire: how to build its chart + table cell.
+  const QS = [
+    { key: 'restq', sub: 'stress', label: '🔋 Stress (RESTQ)', fn: totals.restq, dp: 1, signed: true,
+      opts: { title: 'RESTQ total — Recovery − Stress (higher is better)', min: -6, max: 6, ref: 0, refLabel: 'balanced', emptyMsg: 'No RESTQ submissions yet' } },
+    { key: 'poms', sub: 'mood', label: '🎭 Mood (POMS)', fn: totals.poms, dp: 0, signed: false,
+      opts: { title: 'POMS total — Mood Disturbance (lower is better)', ref: 100, refLabel: 'neutral 100', emptyMsg: 'No POMS submissions yet' } },
+    { key: 'tsci', sub: 'confidence', label: '💪 Confidence (TSCI)', fn: totals.tsci, dp: 1, signed: false,
+      opts: { title: 'TSCI total — Sport-Confidence (1–9, higher is better)', min: 1, max: 9, ref: 5, refLabel: 'midpoint 5', emptyMsg: 'No TSCI submissions yet' } },
+    { key: 'sms', sub: 'motivation', label: '🚀 Motivation (SMS-II)', fn: totals.sms, dp: 1, signed: true,
+      opts: { title: 'SMS-II total — Relative Autonomy Index (higher is better)', ref: 0, refLabel: '0', emptyMsg: 'No SMS-II submissions yet' } },
+  ];
 
-  // Summary table: one row per week, each questionnaire's total + submission count.
-  const fmt = (v, dp = 1) => (v == null ? '—' : (v > 0 && dp > 0 ? '+' : '') + v.toFixed(dp));
-  const rows = weekList.slice().reverse().map((wk) => `
-    <tr>
-      <td>${esc(wk.label)} <span class="muted small">(wk of ${esc(wk.start)})</span></td>
-      <td>${wk.logs.length}</td>
-      <td>${fmt(weekAvg(wk, totals.restq))}</td>
-      <td>${fmt(weekAvg(wk, totals.poms), 0)}</td>
-      <td>${fmt(weekAvg(wk, totals.tsci), 1).replace('+', '')}</td>
-      <td>${fmt(weekAvg(wk, totals.sms))}</td>
-    </tr>`).join('');
+  // Psychology sub-tabs: All, then one per questionnaire.
+  const subs = [{ sub: 'all', label: '📊 All' }, ...QS.map((q) => ({ sub: q.sub, label: q.label }))];
+  const subBar = `<div class="subtabs">${subs.map((s) =>
+    `<button class="subtab ${state.trendsSub === s.sub ? 'active' : ''}" data-tsub="${s.sub}">${s.label}</button>`).join('')}</div>`;
+
+  const fmt = (v, dp, signed) => (v == null ? '—' : (signed && v > 0 ? '+' : '') + v.toFixed(dp));
+  const chartCard = (q) => `<div class="chart-card">${weeklyTrendChart(mkSeries(q.fn), q.opts)}</div>`;
+
+  const totalsTable = (list) => `
+    <div class="table-wrap"><table class="data-table">
+      <thead><tr><th>Week</th><th>#</th>${list.map((q) => `<th title="${esc(q.opts.title)}">${esc(q.label.replace(/^[^ ]+ /, ''))}</th>`).join('')}</tr></thead>
+      <tbody>${weekList.slice().reverse().map((wk) => `
+        <tr><td>${esc(wk.label)} <span class="muted small">(wk of ${esc(wk.start)})</span></td>
+        <td>${wk.logs.length}</td>
+        ${list.map((q) => `<td>${fmt(weekAvg(wk, q.fn), q.dp, q.signed)}</td>`).join('')}</tr>`).join('')}
+      </tbody></table></div>`;
+
+  let body;
+  if (state.trendsSub === 'all') {
+    body = `
+      <div class="charts">${QS.map(chartCard).join('')}</div>
+      <section class="panel"><h3>📈 Weekly totals — ${esc(a.name)}</h3>${totalsTable(QS)}</section>`;
+  } else {
+    const q = QS.find((x) => x.sub === state.trendsSub);
+    body = `
+      <div class="charts">${chartCard(q)}</div>
+      <section class="panel"><h3>📈 ${esc(q.label)} — weekly totals · ${esc(a.name)}</h3>${totalsTable([q])}</section>`;
+  }
 
   return `
     <div class="muted small view-hint">Weekly trend of each questionnaire's <strong>total score</strong> (${weekList.length} week${weekList.length === 1 ? '' : 's'} with data). A week with multiple submissions is averaged.</div>
-    <div class="charts">${cards}</div>
-    <section class="panel">
-      <h3>📈 Weekly totals — ${esc(a.name)}</h3>
-      <div class="table-wrap"><table class="data-table">
-        <thead><tr>
-          <th>Week</th><th>#</th>
-          <th title="Recovery − Stress (0–6 scales); higher is better">RESTQ</th>
-          <th title="Total Mood Disturbance; lower is better">POMS TMD</th>
-          <th title="Mean confidence 1–9; higher is better">TSCI</th>
-          <th title="Relative Autonomy Index; higher is better">SMS-II RAI</th>
-        </tr></thead>
-        <tbody>${rows}</tbody>
-      </table></div>
-    </section>`;
+    ${subBar}
+    ${body}`;
 }
 
 /* ---------------------------- Psychological tab --------------------------- */
