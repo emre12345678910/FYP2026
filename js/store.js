@@ -64,6 +64,30 @@ export function sgtDay(utcIso) {
   return sgtFromDate(new Date(utcIso)).date;
 }
 
+// ISO week key for an instant, anchored to the SGT calendar day.
+// Returns { key: 'YYYY-Www', label: 'Www YYYY', start: 'YYYY-MM-DD' (Mon) }.
+// Used to group mental-log submissions into weeks for trend charts.
+export function sgtWeek(utcIso) {
+  const day = sgtDay(utcIso);                // 'YYYY-MM-DD' in SGT
+  const d = new Date(day + 'T00:00:00Z');    // treat SGT calendar day as a plain date
+  // ISO week: Thursday-based. Day-of-week Mon=1..Sun=7.
+  const dow = (d.getUTCDay() + 6) % 7;       // 0=Mon..6=Sun
+  const thursday = new Date(d);
+  thursday.setUTCDate(d.getUTCDate() - dow + 3);
+  const isoYear = thursday.getUTCFullYear();
+  const jan1 = new Date(Date.UTC(isoYear, 0, 1));
+  const week = Math.floor((thursday - jan1) / 86400000 / 7) + 1;
+  // Monday that starts this week (for a readable range label).
+  const monday = new Date(d);
+  monday.setUTCDate(d.getUTCDate() - dow);
+  const mk = (x) => `${x.getUTCFullYear()}-${String(x.getUTCMonth() + 1).padStart(2, '0')}-${String(x.getUTCDate()).padStart(2, '0')}`;
+  return {
+    key: `${isoYear}-W${String(week).padStart(2, '0')}`,
+    label: `W${week}`,
+    start: mk(monday),
+  };
+}
+
 /* ------------------------------- Athletes -------------------------------- */
 
 // Default daily hydration goal (ml) used to fill the hydration bar.
