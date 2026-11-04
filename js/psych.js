@@ -3,7 +3,7 @@
 // dashboard (to score and chart results).
 //
 // IMPORTANT — LICENSING NOTE
-// RESTQ-Sport, POMS and the Sport Motivation Scale (SMS-6) are validated,
+// RESTQ-Sport, POMS and the Sport Motivation Scale II (SMS-II) are validated,
 // COPYRIGHTED instruments. The exact official item wording is licensed and is
 // NOT reproduced here. The items below are *representative placeholders* that
 // preserve the correct subscale structure, response scales and scoring method.
@@ -31,7 +31,7 @@ export const POMS_SCALE = [
 // TSCI (Vealey): 1 (low) … 9 (high)
 export const TSCI_SCALE = Array.from({ length: 9 }, (_, i) => ({ v: i + 1, label: String(i + 1) }));
 
-// SMS-6: 1 (does not correspond at all) … 7 (corresponds exactly)
+// SMS-II: 1 (does not correspond at all) … 7 (corresponds exactly)
 export const SMS_SCALE = Array.from({ length: 7 }, (_, i) => ({ v: i + 1, label: String(i + 1) }));
 
 /* --------------------------------------------------------------------------
@@ -192,9 +192,11 @@ export const TSCI = {
 };
 
 /* --------------------------------------------------------------------------
- * SMS-6 — Sport Motivation Scale (6 subscales, self-determination continuum)
- * Short representative form: 2 items per subscale (12 items), 1–7 scale.
- * Subscale score = mean of its items (1–7). We also compute a Relative
+ * SMS-II — Sport Motivation Scale II (Pelletier et al., 2013)
+ * The revised SMS: 6 subscales × 3 items = 18 items, 1–7 scale, spanning the
+ * self-determination continuum (intrinsic → integrated → identified →
+ * introjected → external → amotivation).
+ * Subscale score = mean of its 3 items (1–7). We also compute a Relative
  * Autonomy Index (RAI) using standard SDT weights.
  * ------------------------------------------------------------------------ */
 
@@ -202,36 +204,43 @@ const smsSub = (key, name, raiWeight, items) => ({ key, name, raiWeight, items }
 
 export const SMS = {
   key: 'sms',
-  title: 'SMS-6 — Sport Motivation Scale',
-  shortTitle: 'SMS-6',
+  title: 'SMS-II — Sport Motivation Scale II',
+  shortTitle: 'SMS-II',
   scaleResponses: SMS_SCALE,
   min: 1, max: 7,
   prompt: 'Why do you practise your sport?',
   // ordered most self-determined → least; raiWeight used for the autonomy index
+  // 3 representative items per subscale (18 total), matching the SMS-II structure
   subscales: [
     smsSub('intrinsic', 'Intrinsic Motivation', 3, [
       'For the pleasure I feel when I improve at my sport.',
       'Because I really enjoy the experience of training.',
+      'For the satisfaction of learning something new about my sport.',
     ]),
     smsSub('integrated', 'Integrated Regulation', 2, [
       'Because practising my sport is part of who I am.',
       'Because it reflects the values I care about.',
+      'Because my sport is an expression of myself.',
     ]),
     smsSub('identified', 'Identified Regulation', 1, [
       'Because it is a good way to develop myself.',
       'Because it helps me reach goals that matter to me.',
+      'Because training is one of the best ways to improve other parts of my life.',
     ]),
     smsSub('introjected', 'Introjected Regulation', -1, [
       "Because I'd feel guilty if I didn't train.",
       'Because I must do it to feel good about myself.',
+      'Because I would feel bad about myself if I stopped.',
     ]),
     smsSub('external', 'External Regulation', -2, [
       'For the recognition or rewards I get from others.',
       'Because people around me expect me to.',
+      'Because it lets me earn approval from others.',
     ]),
     smsSub('amotivation', 'Amotivation', -3, [
       "I'm not sure anymore; I wonder if it's worth it.",
       "I don't seem to be getting much out of it.",
+      "I used to have good reasons, but now I ask myself why I keep going.",
     ]),
   ],
 };
@@ -296,7 +305,7 @@ export function scoreTsci(answers) {
   return { score, band: score == null ? null : score >= 6 ? 'high' : score >= 4 ? 'moderate' : 'low' };
 }
 
-// --- SMS-6 ---
+// --- SMS-II ---
 export function scoreSms(answers) {
   if (!answers) return null;
   const subscales = SMS.subscales.map((sub) => {

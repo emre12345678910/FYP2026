@@ -74,7 +74,7 @@ scores every submission and charts the results on the coach's **Psychological** 
 | **Stress** | **RESTQ-Sport** (Recovery–Stress Questionnaire) | Scale profile chart (stress vs recovery) + stress/recovery trend |
 | **Mood** | **POMS** (Profile of Mood States) | Mood profile + Total Mood Disturbance (TMD) trend |
 | **Confidence** | **Vealey's TSCI** (Trait Sport-Confidence Inventory) | Confidence (1–9) trend |
-| **Motivation** | **SMS-6** (Sport Motivation Scale) | Subscale profile + Relative Autonomy Index trend |
+| **Motivation** | **SMS-II** (Sport Motivation Scale II — 6 subscales × 3 items) | Subscale profile + Relative Autonomy Index trend |
 
 > ⚠️ **Licensing:** RESTQ-Sport, POMS and SMS are copyrighted instruments. This repo ships **representative
 > placeholder item wording** with the correct subscale structure, response scales and scoring. **Replace the
@@ -128,7 +128,7 @@ js/api.js         # swappable backend adapter (local / server / firebase) — ch
 js/store.js       # persistence (incl. mental logs), SGT timestamping, derived-metric math
 js/alerts.js      # physiological alert engine + RTP status tiers
 js/charts.js      # tiny hand-rolled SVG charts (physio + psych), no chart library
-js/psych.js       # questionnaire definitions (RESTQ/POMS/TSCI/SMS-6) + scoring
+js/psych.js       # questionnaire definitions (RESTQ/POMS/TSCI/SMS-II) + scoring
 js/input.js       # Athlete Input controller (Daily / Training / Mental logs)
 js/dashboard.js   # Coach Dashboard controller (Physiological + Psychological tabs)
 server/server.js  # zero-dependency Node server: static files + shared data API
