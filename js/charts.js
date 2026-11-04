@@ -287,7 +287,7 @@ export function tsciChart(series) {
   );
 }
 
-// SMS-6 motivation profile (latest): 6 subscales, self-determined → amotivation.
+// SMS-II motivation profile (latest): 6 subscales, self-determined → amotivation.
 // score 1–7.
 export function smsProfileChart(score) {
   if (!score || !score.subscales) return emptyChart('No motivation data yet');
@@ -296,10 +296,10 @@ export function smsProfileChart(score) {
     value: s.score,
     cls: s.raiWeight > 0 ? 'green' : 'red',
   }));
-  return profileBars(rows, { min: 1, max: 7, title: 'SMS-6 Motivation Profile — autonomous (green) vs controlled (red)', mid: 4 });
+  return profileBars(rows, { min: 1, max: 7, title: 'SMS-II Motivation Profile — autonomous (green) vs controlled (red)', mid: 4 });
 }
 
-// SMS-6 Relative Autonomy Index trend. series = [{ label, rai }]. Higher = more
+// SMS-II Relative Autonomy Index trend. series = [{ label, rai }]. Higher = more
 // self-determined motivation.
 export function smsRaiChart(series) {
   if (!series.length) return emptyChart('No motivation data yet');
@@ -311,7 +311,7 @@ export function smsRaiChart(series) {
   const zeroY = scaleY(0, min, max);
   const dots = pts.map((p) => `<circle cx="${p.x}" cy="${p.y}" r="3" class="dot-blue"/>`).join('');
   return svgWrap(
-    axes(min, max, labels, { yFmt: (v) => v.toFixed(0), title: 'SMS-6 Relative Autonomy Index (higher is better)' }) +
+    axes(min, max, labels, { yFmt: (v) => v.toFixed(0), title: 'SMS-II Relative Autonomy Index (higher is better)' }) +
     `<line x1="${P.l}" y1="${zeroY}" x2="${W - P.r}" y2="${zeroY}" class="baseline"/>` +
     `<path d="${path(pts)}" class="line-blue"/>` + dots
   );

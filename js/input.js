@@ -2,7 +2,7 @@
 // Three logs that mirror the dashboard tabs:
 //   • Daily log     — body mass, blood pressure, sleep, hydration, nutrition
 //   • Training log   — training load, pain & injury, range of motion
-//   • Mental log     — RESTQ / POMS / TSCI / SMS-6 questionnaires
+//   • Mental log     — RESTQ / POMS / TSCI / SMS-II questionnaires
 // Data is written to the same localStorage the Dashboard reads from.
 import {
   getAthletes, addAthlete, updateAthlete, deleteAthlete, saveCheckin, saveMentalLog,

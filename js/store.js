@@ -225,7 +225,7 @@ export function deleteCheckin(id) {
 }
 
 /* --------------------------- Mental logs -------------------------------- */
-// Psychological questionnaire submissions (RESTQ / POMS / TSCI / SMS-6).
+// Psychological questionnaire submissions (RESTQ / POMS / TSCI / SMS-II).
 // Each record stores the raw per-item responses; scoring is derived in psych.js.
 
 export function getMentalLogs() {

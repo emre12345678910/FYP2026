@@ -1,7 +1,7 @@
 // dashboard.js — Coach DASHBOARD (output only, read-only).
 // Tabs:
 //   🫀 Physiological  → sub-tabs: Daily · Training
-//   🧠 Psychological  → RESTQ / POMS / TSCI / SMS-6 scored results & charts
+//   🧠 Psychological  → RESTQ / POMS / TSCI / SMS-II scored results & charts
 // Reads from the same localStorage the Athlete Input app writes to.
 import {
   getAthletes, checkinsForAthlete, mentalLogsForAthlete,
@@ -362,7 +362,7 @@ function trendsPanel(a) {
     weeklyTrendChart(restqSeries, { title: 'RESTQ total — Recovery − Stress (higher is better)', min: -6, max: 6, ref: 0, refLabel: 'balanced', emptyMsg: 'No RESTQ submissions yet' }),
     weeklyTrendChart(pomsSeries, { title: 'POMS total — Mood Disturbance (lower is better)', ref: 100, refLabel: 'neutral 100', emptyMsg: 'No POMS submissions yet' }),
     weeklyTrendChart(tsciSeries, { title: 'TSCI total — Sport-Confidence (1–9, higher is better)', min: 1, max: 9, ref: 5, refLabel: 'midpoint 5', emptyMsg: 'No TSCI submissions yet' }),
-    weeklyTrendChart(smsSeries, { title: 'SMS-6 total — Relative Autonomy Index (higher is better)', ref: 0, refLabel: '0', emptyMsg: 'No SMS-6 submissions yet' }),
+    weeklyTrendChart(smsSeries, { title: 'SMS-II total — Relative Autonomy Index (higher is better)', ref: 0, refLabel: '0', emptyMsg: 'No SMS-II submissions yet' }),
   ].map((c) => `<div class="chart-card">${c}</div>`).join('');
 
   // Summary table: one row per week, each questionnaire's total + submission count.
@@ -388,7 +388,7 @@ function trendsPanel(a) {
           <th title="Recovery − Stress (0–6 scales); higher is better">RESTQ</th>
           <th title="Total Mood Disturbance; lower is better">POMS TMD</th>
           <th title="Mean confidence 1–9; higher is better">TSCI</th>
-          <th title="Relative Autonomy Index; higher is better">SMS-6 RAI</th>
+          <th title="Relative Autonomy Index; higher is better">SMS-II RAI</th>
         </tr></thead>
         <tbody>${rows}</tbody>
       </table></div>
@@ -435,7 +435,7 @@ function psychPanel(a) {
         <span class="kpi-sub">recovery − stress (higher is better)</span>
       </div>
       <div class="psych-kpi ${sms && sms.rai != null ? '' : 'empty'}">
-        <span class="kpi-label">🚀 Motivation (SMS-6 RAI)</span>
+        <span class="kpi-label">🚀 Motivation (SMS-II RAI)</span>
         <span class="kpi-value">${sms && sms.rai != null ? (sms.rai > 0 ? '+' : '') + sms.rai.toFixed(1) : '—'}</span>
         <span class="kpi-sub">autonomy index (higher is better)</span>
       </div>
@@ -445,7 +445,7 @@ function psychPanel(a) {
     { q: 'restq', title: '🔋 Stress — RESTQ-Sport', profile: restq ? restqProfileChart(restq) : null, trend: restqTrend.length ? restqBalanceChart(restqTrend) : null },
     { q: 'poms', title: '🎭 Mood — Profile of Mood States', profile: poms ? pomsProfileChart(poms) : null, trend: tmdTrend.length ? pomsTmdChart(tmdTrend) : null },
     { q: 'tsci', title: '💪 Confidence — Vealey TSCI', profile: null, trend: tsciTrend.length ? tsciChart(tsciTrend) : null },
-    { q: 'sms', title: '🚀 Motivation — SMS-6', profile: sms ? smsProfileChart(sms) : null, trend: raiTrend.length ? smsRaiChart(raiTrend) : null },
+    { q: 'sms', title: '🚀 Motivation — SMS-II', profile: sms ? smsProfileChart(sms) : null, trend: raiTrend.length ? smsRaiChart(raiTrend) : null },
   ].map((s) => {
     const charts = [s.profile, s.trend].filter(Boolean);
     return `<section class="panel">
