@@ -5,14 +5,14 @@
 // Reads from the same localStorage the Athlete Input app writes to.
 import {
   getAthletes, checkinsForAthlete, mentalLogsForAthlete,
-  fluidLossPct, bpCategory, formatHoursMinutes, formatSgt, sgtDay, romPct,
+  fluidLossPct, bpCategory, formatHoursMinutes, formatSgt, sgtDay, sgtWeek, romPct,
   getOverride, exportData, importData, pullState, startSync, isShared, resolveBackend,
 } from './store.js';
 import { evaluateAthlete, readinessTier, evaluateReadinessStatus, tierMeta } from './alerts.js';
 import {
   romChart, srpeChart, painChart, hydrationChart, sleepChart, nutritionChart,
   restqProfileChart, restqBalanceChart, pomsProfileChart, pomsTmdChart,
-  tsciChart, smsProfileChart, smsRaiChart,
+  tsciChart, smsProfileChart, smsRaiChart, weeklyTrendChart,
 } from './charts.js';
 import {
   QUESTIONNAIRES, scoreRestq, scorePoms, scoreTsci, scoreSms,
@@ -57,6 +57,7 @@ function render() {
       <nav class="tabs">
         <button class="tab ${state.tab === 'physio' ? 'active' : ''}" data-tab="physio">🫀 Physiological</button>
         <button class="tab ${state.tab === 'psych' ? 'active' : ''}" data-tab="psych">🧠 Psychological</button>
+        <button class="tab ${state.tab === 'trends' ? 'active' : ''}" data-tab="trends">📈 Weekly Trends</button>
       </nav>
       <div class="tz">🕒 SGT (UTC+8)</div>
       <div class="data-actions">
@@ -177,9 +178,11 @@ function detail() {
       <h2>${esc(a.name)} <span class="muted small">· ${[a.combatType, a.gender, a.age != null ? a.age + 'y' : null, a.currentWeight != null ? a.currentWeight + ' kg' : null, 'baseline ROM ' + a.romBaseline + '°'].filter(Boolean).map(esc).join(' · ')}</span></h2>
       <span class="tier big ${status.cls}">${status.icon} ${status.tier}${status.overridden ? ' ✎ override' : ''}</span>
     </div>
-    <div class="override-bar"><span class="muted small">Auto readiness: ${auto.icon} ${auto.tier} · showing ${state.tab === 'physio' ? 'Physiological' : 'Psychological'} data (read-only)</span></div>`;
+    <div class="override-bar"><span class="muted small">Auto readiness: ${auto.icon} ${auto.tier} · showing ${state.tab === 'physio' ? 'Physiological' : state.tab === 'psych' ? 'Psychological' : 'Weekly Trends'} data (read-only)</span></div>`;
 
-  return head + (state.tab === 'physio' ? physioPanel(a, checkins) : psychPanel(a));
+  if (state.tab === 'psych') return head + psychPanel(a);
+  if (state.tab === 'trends') return head + trendsPanel(a);
+  return head + physioPanel(a, checkins);
 }
 
 /* --------------------------- Physiological tab --------------------------- */
@@ -316,6 +319,79 @@ function trainingPanel(a, checkins) {
       <div class="table-wrap"><table class="data-table"><thead><tr>
         <th>SGT</th><th>Intensity</th><th>sRPE</th><th>Dur</th><th>Workload</th><th>Pre/Post kg</th><th>Fluid%</th><th>Sweat</th><th>Pain</th><th>Location</th><th>Joint / °</th><th>ROM%</th>
       </tr></thead><tbody>${rawRows || '<tr><td colspan="12" class="muted">No training data</td></tr>'}</tbody></table></div>
+    </section>`;
+}
+
+/* ---------------------------- Weekly Trends tab -------------------------- */
+// Each questionnaire's "total score" trended week-over-week. When a week has
+// more than one submission, the week's value is the average of those scores.
+function trendsPanel(a) {
+  const logs = mentalLogsForAthlete(a.id);
+  if (!logs.length) return '<section class="panel"><p class="muted">No psychological (mental log) data yet for this athlete, so there are no weekly trends to show. Athletes complete these in the Mental log of the Input app.</p></section>';
+
+  // Group submissions by ISO week (SGT-anchored), preserving chronological order.
+  const weeks = new Map(); // key -> { key, label, start, logs: [] }
+  for (const m of logs) {
+    const w = sgtWeek(m.timestampUtc);
+    if (!weeks.has(w.key)) weeks.set(w.key, { ...w, logs: [] });
+    weeks.get(w.key).logs.push(m);
+  }
+  const weekList = [...weeks.values()].sort((x, y) => (x.key < y.key ? -1 : 1));
+
+  // Average of a per-log score across a week's submissions (ignoring missing).
+  const weekAvg = (wk, scoreFn) => {
+    const vals = wk.logs.map(scoreFn).filter((v) => v != null);
+    return vals.length ? vals.reduce((s, v) => s + v, 0) / vals.length : null;
+  };
+
+  // Per-questionnaire total-score extractor from a single mental-log record.
+  const totals = {
+    restq: (m) => { const s = m.responses && m.responses.restq ? scoreRestq(m.responses.restq) : null; return s ? s.recoveryStressBalance : null; },
+    poms: (m) => { const s = m.responses && m.responses.poms ? scorePoms(m.responses.poms) : null; return s ? s.tmd : null; },
+    tsci: (m) => { const s = m.responses && m.responses.tsci ? scoreTsci(m.responses.tsci) : null; return s ? s.score : null; },
+    sms: (m) => { const s = m.responses && m.responses.sms ? scoreSms(m.responses.sms) : null; return s ? s.rai : null; },
+  };
+
+  const mkSeries = (fn) => weekList.map((wk) => ({ label: wk.label, value: weekAvg(wk, fn) }));
+  const restqSeries = mkSeries(totals.restq);
+  const pomsSeries = mkSeries(totals.poms);
+  const tsciSeries = mkSeries(totals.tsci);
+  const smsSeries = mkSeries(totals.sms);
+
+  const cards = [
+    weeklyTrendChart(restqSeries, { title: 'RESTQ total — Recovery − Stress (higher is better)', min: -6, max: 6, ref: 0, refLabel: 'balanced', emptyMsg: 'No RESTQ submissions yet' }),
+    weeklyTrendChart(pomsSeries, { title: 'POMS total — Mood Disturbance (lower is better)', ref: 100, refLabel: 'neutral 100', emptyMsg: 'No POMS submissions yet' }),
+    weeklyTrendChart(tsciSeries, { title: 'TSCI total — Sport-Confidence (1–9, higher is better)', min: 1, max: 9, ref: 5, refLabel: 'midpoint 5', emptyMsg: 'No TSCI submissions yet' }),
+    weeklyTrendChart(smsSeries, { title: 'SMS-6 total — Relative Autonomy Index (higher is better)', ref: 0, refLabel: '0', emptyMsg: 'No SMS-6 submissions yet' }),
+  ].map((c) => `<div class="chart-card">${c}</div>`).join('');
+
+  // Summary table: one row per week, each questionnaire's total + submission count.
+  const fmt = (v, dp = 1) => (v == null ? '—' : (v > 0 && dp > 0 ? '+' : '') + v.toFixed(dp));
+  const rows = weekList.slice().reverse().map((wk) => `
+    <tr>
+      <td>${esc(wk.label)} <span class="muted small">(wk of ${esc(wk.start)})</span></td>
+      <td>${wk.logs.length}</td>
+      <td>${fmt(weekAvg(wk, totals.restq))}</td>
+      <td>${fmt(weekAvg(wk, totals.poms), 0)}</td>
+      <td>${fmt(weekAvg(wk, totals.tsci), 1).replace('+', '')}</td>
+      <td>${fmt(weekAvg(wk, totals.sms))}</td>
+    </tr>`).join('');
+
+  return `
+    <div class="muted small view-hint">Weekly trend of each questionnaire's <strong>total score</strong> (${weekList.length} week${weekList.length === 1 ? '' : 's'} with data). A week with multiple submissions is averaged.</div>
+    <div class="charts">${cards}</div>
+    <section class="panel">
+      <h3>📈 Weekly totals — ${esc(a.name)}</h3>
+      <div class="table-wrap"><table class="data-table">
+        <thead><tr>
+          <th>Week</th><th>#</th>
+          <th title="Recovery − Stress (0–6 scales); higher is better">RESTQ</th>
+          <th title="Total Mood Disturbance; lower is better">POMS TMD</th>
+          <th title="Mean confidence 1–9; higher is better">TSCI</th>
+          <th title="Relative Autonomy Index; higher is better">SMS-6 RAI</th>
+        </tr></thead>
+        <tbody>${rows}</tbody>
+      </table></div>
     </section>`;
 }
 

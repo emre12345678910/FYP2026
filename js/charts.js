@@ -316,3 +316,35 @@ export function smsRaiChart(series) {
     `<path d="${path(pts)}" class="line-blue"/>` + dots
   );
 }
+
+/* Weekly trend line — generic line chart for one questionnaire total score.
+ * series = [{ label, value }]; opts = { title, min, max, unit, ref, refLabel, good }.
+ * `ref` draws a dashed reference line; `good` ('up'|'down') just informs the title.
+ */
+export function weeklyTrendChart(series, opts = {}) {
+  const data = series.filter((s) => s.value != null);
+  if (!data.length) return emptyChart(opts.emptyMsg || 'No data yet');
+  const labels = data.map((s) => s.label);
+  const unit = opts.unit || '';
+  let min = opts.min, max = opts.max;
+  if (min == null || max == null) {
+    const vals = data.map((s) => s.value);
+    const lo = Math.min(...vals), hi = Math.max(...vals);
+    const pad = (hi - lo) * 0.15 || 1;
+    if (min == null) min = Math.floor(lo - pad);
+    if (max == null) max = Math.ceil(hi + pad);
+  }
+  const pts = data.map((s, i) => ({ x: scaleX(i, data.length), y: scaleY(s.value, min, max), v: s.value }));
+  const dots = pts.map((p) => `<circle cx="${p.x}" cy="${p.y}" r="3.5" class="dot-blue"/>`).join('');
+  const valueLabels = pts.map((p) => `<text x="${p.x}" y="${p.y - 7}" class="barlabel">${p.v.toFixed(unit === '%' ? 0 : 1)}</text>`).join('');
+  let refEls = '';
+  if (opts.ref != null) {
+    const ry = scaleY(opts.ref, min, max);
+    refEls = `<line x1="${P.l}" y1="${ry}" x2="${W - P.r}" y2="${ry}" class="baseline"/>` +
+      (opts.refLabel ? `<text x="${W - P.r}" y="${ry - 4}" class="ann">${opts.refLabel}</text>` : '');
+  }
+  return svgWrap(
+    axes(min, max, labels, { yFmt: (v) => v.toFixed(unit === '%' ? 0 : 0) + unit, title: opts.title || 'Weekly trend' }) +
+    refEls + `<path d="${path(pts)}" class="line-blue"/>` + dots + valueLabels
+  );
+}
