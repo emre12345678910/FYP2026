@@ -558,21 +558,31 @@ function psychPanel(a) {
   }).join('');
 
   // Clickable history — pick any past submission to view its scored results.
+  // Athlete's optional free-form note to the coach for the viewed submission.
+  const commentPanel = selected.comments && selected.comments.trim()
+    ? `<section class="panel comment-panel">
+         <h3>💬 Note from ${esc(a.name)} <span class="muted small">· ${esc(formatSgt(selected.timestampUtc))}</span></h3>
+         <blockquote class="athlete-note">${esc(selected.comments.trim())}</blockquote>
+       </section>`
+    : '';
+
   const historyRows = logs.slice().reverse().map((m) => {
     const done = Object.keys(QUESTIONNAIRES).filter((k) => m.responses && m.responses[k] && Object.keys(m.responses[k]).length);
+    const hasNote = m.comments && m.comments.trim();
     const sel = m.id === selected.id;
     return `<tr class="history-row ${sel ? 'sel' : ''}" data-mlog="${m.id}" title="View this submission's results">
       <td>${esc(formatSgt(m.timestampUtc))}${sel ? ' <span class="pill ok">viewing</span>' : ''}</td>
-      <td>${done.map((k) => `<span class="pill">${QUESTIONNAIRES[k].shortTitle}</span>`).join(' ') || '—'}</td></tr>`;
+      <td>${done.map((k) => `<span class="pill">${QUESTIONNAIRES[k].shortTitle}</span>`).join(' ') || '—'}${hasNote ? ' <span class="pill note-pill" title="Includes a note to the coach">💬 note</span>' : ''}</td></tr>`;
   }).join('');
 
   return `
     <div class="muted small view-hint">Viewing submission from <strong>${esc(formatSgt(selected.timestampUtc))}</strong>${isLatest ? ' (latest)' : ''} — click any row in the history below to look back at an earlier date/time.</div>
     ${headline}
+    ${commentPanel}
     ${sections}
     <section class="panel"><h3>🕒 Mental log history <span class="muted small">· ${logs.length} submission${logs.length === 1 ? '' : 's'} · click a row to view</span></h3>
       <div class="table-wrap"><table class="data-table" style="max-width:640px">
-        <thead><tr><th>Time (SGT)</th><th>Questionnaires</th></tr></thead><tbody>${historyRows}</tbody></table></div>
+        <thead><tr><th>Time (SGT)</th><th>Questionnaires &amp; notes</th></tr></thead><tbody>${historyRows}</tbody></table></div>
     </section>`;
 }
 
