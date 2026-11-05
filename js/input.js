@@ -160,7 +160,7 @@ function dailyLog(a) {
   <div class="daily-log">
     <div class="daily-log-head">
       <div>
-        <h1 class="daily-title">Daily Log</h1>
+        <h1 class="daily-title">Physiological <span class="daily-title-sub">· Daily log</span></h1>
         <p class="daily-sub">BOXING · TRAIN · RECOVER · REPEAT · ${esc(a.name)}</p>
       </div>
       <button class="save-log-btn primary" type="submit" form="daily-form">Save Log</button>
@@ -243,7 +243,7 @@ function trainingLog(a) {
   <div class="daily-log">
     <div class="daily-log-head">
       <div>
-        <h1 class="daily-title">Training Log</h1>
+        <h1 class="daily-title">Physiological <span class="daily-title-sub">· Training log</span></h1>
         <p class="daily-sub">BOXING · TRAIN · RECOVER · REPEAT · ${esc(a.name)}</p>
       </div>
       <button class="save-log-btn primary" type="submit" form="training-form">Save Log</button>
@@ -252,7 +252,7 @@ function trainingLog(a) {
     <form id="training-form" class="dl-grid">
       <!-- Training Load + ROM + Pain nested under Training -->
       <section class="dl-card dl-wide">
-        <div class="dl-card-head"><h3>Training Log</h3><a href="#" class="hist-link" data-history="training">History</a></div>
+        <div class="dl-card-head"><h3>Training Load &amp; Intensity</h3><a href="#" class="hist-link" data-history="training">History</a></div>
         <div class="dl-row-fields">
           <label class="dl-field">Training Type
             <select name="intensity_level"><option value="">—</option>${INTENSITY_LEVELS.map((l) => `<option>${l}</option>`).join('')}</select>

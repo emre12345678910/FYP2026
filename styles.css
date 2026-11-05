@@ -593,6 +593,7 @@ a.ghost { text-decoration: none; display: inline-flex; align-items: center; }
 .daily-log { max-width: 1100px; margin: 0 auto; }
 .daily-log-head { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 18px; }
 .daily-title { margin: 0; font-size: 30px; font-weight: 800; letter-spacing: .5px; }
+.daily-title-sub { font-size: 18px; font-weight: 600; color: var(--muted); letter-spacing: 0; }
 .daily-sub { margin: 2px 0 0; font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 2px; }
 .save-log-btn { align-self: center; }
 
