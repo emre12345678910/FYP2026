@@ -12,9 +12,9 @@ import {
   hydrationGoalMl, exerciseMinutesToday,
   exportData, importData, pullState, startSync, isShared, resolveBackend,
   BP_TIMINGS, INTENSITY_LEVELS, MACRO_TAGS, PAIN_SYMPTOMS,
-} from './store.js';
-import { QUESTIONNAIRES, itemId } from './psych.js';
-import { hydrationWeekChart, bpWeekChart, bodyMassWeekChart, sleepChart } from './charts.js';
+} from './store.js?v=5';
+import { QUESTIONNAIRES, itemId } from './psych.js?v=5';
+import { hydrationWeekChart, bpWeekChart, bodyMassWeekChart, sleepChart } from './charts.js?v=5';
 
 const root = document.getElementById('app');
 // section = top-level ('physio' | 'mental'); physioSub = 'daily' | 'training'
