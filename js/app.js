@@ -85,7 +85,6 @@ function openProfile(athleteId) {
   };
   pick('ROM %', (c) => c.rom_percentage, '%', 'up');
   pick('Pain (NPRS)', (c) => c.pain_score, '', 'down');
-  pick('Body mass', (c) => c.body_mass_kg, ' kg', 'up');
   pick('Sleep', (c) => c.sleep_hours, ' h', 'up');
 
   const avatarChoices = Object.entries(AVATARS).map(([key, av]) =>
@@ -544,18 +543,6 @@ function athleteView(athletes) {
       </div>
       <div class="body-mass-row">
         <fieldset class="body-mass-fieldset">
-          <legend>⚖️ Body Mass</legend>
-          <label>Body mass (kg)<input type="number" step="0.1" name="body_mass_kg"></label>
-          <small class="hint">Each recording is auto-timestamped in SGT and added to the log beside this.</small>
-        </fieldset>
-        <div class="body-mass-log-inline">
-          <span class="field-label">⚖️ Body Mass log <span class="muted small">· timestamped (SGT)</span></span>
-          ${a ? bodyMassLogTable(checkinsForAthlete(a.id)) : '<p class="muted">Select an athlete.</p>'}
-        </div>
-      </div>
-
-      <div class="body-mass-row">
-        <fieldset class="body-mass-fieldset">
           <legend>🩺 Blood Pressure</legend>
           <label>Timing
             <select name="bp_timing" id="bp-timing">
@@ -716,7 +703,6 @@ function athleteCharts() {
   ${dietLog(checkins)}`;
 }
 
-// Timestamped Body Mass log — every body-mass recording with its SGT time.
 // Table markup for the blood-pressure log (every reading, timestamped).
 function bpLogTable(checkins) {
   const list = checkins.filter((c) => c.bp_systolic != null && c.bp_diastolic != null).slice().reverse();
@@ -734,30 +720,6 @@ function bpLogTable(checkins) {
     <div class="table-wrap">
       <table class="data-table">
         <thead><tr><th>Time (SGT)</th><th>Timing</th><th>Reading</th><th>Category</th></tr></thead>
-        <tbody>${rows}</tbody>
-      </table>
-    </div>`;
-}
-
-// Table markup for the body-mass log (every recording + delta vs previous).
-function bodyMassLogTable(checkins) {
-  const list = checkins.filter((c) => c.body_mass_kg != null).slice().reverse();
-  if (!list.length) return '<p class="muted">No body-mass recordings yet. Enter a body mass to start the log.</p>';
-  const rows = list.map((c, i) => {
-    const prev = list[i + 1]; // next in reversed list = earlier recording
-    const delta = prev && prev.body_mass_kg != null ? c.body_mass_kg - prev.body_mass_kg : null;
-    const deltaStr = delta == null ? '—'
-      : (delta === 0 ? '±0' : (delta > 0 ? '+' : '') + delta.toFixed(1)) + ' kg';
-    return `<tr>
-      <td>${esc(formatSgt(c.timestampUtc))}</td>
-      <td>${c.body_mass_kg} kg</td>
-      <td class="${delta != null && delta < 0 ? 'cell-yellow' : ''}">${deltaStr}</td>
-    </tr>`;
-  }).join('');
-  return `
-    <div class="table-wrap">
-      <table class="data-table">
-        <thead><tr><th>Time (SGT)</th><th>Body mass</th><th>Δ vs prev</th></tr></thead>
         <tbody>${rows}</tbody>
       </table>
     </div>`;
@@ -993,7 +955,6 @@ function bindAthleteForm() {
 
     const input = {
       athleteId: state.selectedAthlete,
-      body_mass_kg: num('body_mass_kg'),
       bp_systolic: num('bp_systolic'),
       bp_diastolic: num('bp_diastolic'),
       bp_timing: str('bp_timing') || null,
@@ -1272,7 +1233,7 @@ function coachDetail() {
       <div class="table-wrap">
         <table class="data-table">
           <thead><tr>
-            <th>SGT</th><th>Readiness</th><th>Body mass</th><th>BP (mmHg)</th><th>Pre/Post kg</th><th>Fluid%</th><th>Sweat</th><th>sRPE</th><th>Intensity</th>
+            <th>SGT</th><th>Readiness</th><th>BP (mmHg)</th><th>Pre/Post kg</th><th>Fluid%</th><th>Sweat</th><th>sRPE</th><th>Intensity</th>
             <th>Dur</th><th>Workload</th><th>Pain</th><th>Location</th><th>Joint / °</th><th>ROM%</th><th>Sleep</th><th>Window</th>
           </tr></thead>
           <tbody>${rawRows(a, checkins)}</tbody>
@@ -1283,7 +1244,7 @@ function coachDetail() {
 }
 
 function rawRows(a, checkins) {
-  if (!checkins.length) return '<tr><td colspan="17" class="muted">No data</td></tr>';
+  if (!checkins.length) return '<tr><td colspan="16" class="muted">No data</td></tr>';
   return checkins.slice().reverse().map((c) => {
     const loss = fluidLossPct(c.pre_weight_kg, c.post_weight_kg);
     const rom = c.rom_percentage;
@@ -1292,7 +1253,6 @@ function rawRows(a, checkins) {
     return `<tr>
       <td>${esc(formatSgt(c.timestampUtc))}</td>
       <td><span class="tier ${rt.cls}">${rt.icon} ${rt.tier}</span></td>
-      <td>${c.body_mass_kg != null ? c.body_mass_kg + ' kg' : '—'}</td>
       <td>${(() => { if (c.bp_systolic == null || c.bp_diastolic == null) return '—'; const cat = bpCategory(c.bp_systolic, c.bp_diastolic); return `<span class="${cat && cat.cls !== 'green' ? (cat.cls === 'red' ? 'cell-red' : 'cell-yellow') : ''}">${c.bp_systolic}/${c.bp_diastolic}</span>`; })()}</td>
       <td>${c.pre_weight_kg ?? '—'} / ${c.post_weight_kg ?? '—'}</td>
       <td class="${loss != null && loss > 2 ? 'cell-red' : ''}">${loss != null ? loss.toFixed(1) + '%' : '—'}</td>

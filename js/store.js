@@ -120,9 +120,6 @@ export function saveCheckin(input, athlete) {
     sgtDay: ts.date,            // SGT calendar day for grouping
     athleteId: input.athleteId,
 
-    // Body Mass (single recording, timestamped via `timestamp`/`timestampSgt`)
-    body_mass_kg: input.body_mass_kg ?? null,
-
     // Vitals — Blood Pressure (mmHg), timestamped via the record's `timestamp`
     bp_systolic: input.bp_systolic ?? null,
     bp_diastolic: input.bp_diastolic ?? null,

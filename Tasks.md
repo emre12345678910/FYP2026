@@ -5,7 +5,7 @@
   - [x] Implement `getSingaporeTimestamp()` for automatic SGT timestamps. — `js/store.js`
 
 - [x] **Task 2: Build Complete Athlete Input Form**
-  - [x] Body Mass & Hydration inputs (Pre/Post Weight in kg, Thirst scale 1–10).
+  - [x] Hydration inputs (Pre/Post Weight in kg, Thirst scale 1–10).
   - [x] Goniometric ROM & Pain inputs (Joint tested, Measured degrees °, NPRS 0–10, Location).
   - [x] Training Load & Intensity inputs (sRPE 1–10, Intensity Level dropdown, Duration in mins).
   - [x] Sleep inputs (Duration in hours, Quality scale 1–10, tier).

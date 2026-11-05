@@ -21,7 +21,6 @@ Any static server works. No internet connection or packages are required.
 
 | Metric | Fields |
 |---|---|
-| **Body Mass** | Pre- / post-session weight (kg) |
 | **Hydration** | Acute body-mass shift (%), subjective thirst (1–10) |
 | **Training Load** | sRPE (1–10), intensity index (Technique / Conditioning / Sparring / Max Load), duration → **Total Workload = sRPE × min** |
 | **Pain & Injury** | NPRS (0–10) + body-area/symptom note |
