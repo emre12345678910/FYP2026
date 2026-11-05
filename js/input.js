@@ -7,14 +7,14 @@
 import {
   getAthletes, addAthlete, updateAthlete, deleteAthlete, saveCheckin, saveMentalLog,
   checkinsForAthlete, mentalLogsForAthlete, lastBodyMass, hydrationMlForDay,
-  sweatRateLph, bpCategory, sleepHoursBetween, sleepMinutesBetween, formatHoursMinutes, formatSgt, sgtDay,
+  bpCategory, sleepHoursBetween, sleepMinutesBetween, formatHoursMinutes, formatSgt, sgtDay,
   getHydrationToday, addBottle, removeBottle, DEFAULT_BOTTLE_ML,
   hydrationGoalMl, exerciseMinutesToday,
   exportData, importData, pullState, startSync, isShared, resolveBackend,
   BP_TIMINGS, INTENSITY_LEVELS, PAIN_SYMPTOMS,
-} from './store.js?v=7';
-import { QUESTIONNAIRES, itemId } from './psych.js?v=7';
-import { hydrationWeekChart, bpWeekChart, bodyMassWeekChart, sleepChart } from './charts.js?v=7';
+} from './store.js?v=8';
+import { QUESTIONNAIRES, itemId } from './psych.js?v=8';
+import { hydrationWeekChart, bpWeekChart, bodyMassWeekChart, sleepChart } from './charts.js?v=8';
 
 const root = document.getElementById('app');
 // section = top-level ('physio' | 'mental'); physioSub = 'daily' | 'training'
@@ -249,11 +249,6 @@ function trainingLog(a) {
             <select name="srpe"><option value="">—</option>${Array.from({ length: 10 }, (_, i) => i + 1).map((n) => `<option value="${n}">${n}</option>`).join('')}</select>
           </label>
           <label class="dl-field">Duration (min)<input type="number" min="0" name="duration_mins" id="duration-mins" placeholder="e.g. 60"></label>
-        </div>
-        <div class="dl-row-fields">
-          <label class="dl-field">Pre-session weight (kg)<input type="number" step="0.1" name="pre_weight_kg" id="pre-weight"></label>
-          <label class="dl-field">Post-session weight (kg)<input type="number" step="0.1" name="post_weight_kg" id="post-weight"></label>
-          <div class="dl-field-static"><span class="dl-field-label">Sweat rate</span><span class="dl-field-value" id="sweat-rate-display">—</span></div>
         </div>
 
         <!-- Pain & Symptoms nested under Training -->
@@ -691,22 +686,6 @@ function bindDaily(a) {
 }
 
 function bindTraining(a) {
-  const preW = root.querySelector('#pre-weight');
-  const postW = root.querySelector('#post-weight');
-  const durW = root.querySelector('#duration-mins');
-  const sweatDisplay = root.querySelector('#sweat-rate-display');
-  function recalcSweat() {
-    if (!sweatDisplay) return;
-    const pre = preW.value !== '' ? Number(preW.value) : null;
-    const post = postW.value !== '' ? Number(postW.value) : null;
-    const dur = durW.value !== '' ? Number(durW.value) : null;
-    const fluids = getHydrationToday(a.id).ml;
-    const rate = sweatRateLph(pre, post, dur, fluids);
-    if (rate != null) { sweatDisplay.textContent = `${rate.toFixed(2)} L/h`; sweatDisplay.classList.toggle('high', rate >= 1.5); }
-    else { sweatDisplay.textContent = '—'; sweatDisplay.classList.remove('high'); }
-  }
-  [preW, postW, durW].forEach((el) => el && el.addEventListener('input', recalcSweat));
-
   // History links
   root.querySelectorAll('[data-history]').forEach((lnk) =>
     lnk.addEventListener('click', (e) => { e.preventDefault(); openHistory(lnk.dataset.history, a); }));
@@ -720,7 +699,6 @@ function bindTraining(a) {
     saveCheckin({
       athleteId: a.id,
       srpe: num('srpe'), intensity_level: str('intensity_level') || null, duration_mins: num('duration_mins'),
-      pre_weight_kg: num('pre_weight_kg'), post_weight_kg: num('post_weight_kg'),
       pain_score: num('pain_score'), pain_location: str('pain_location'), pain_symptoms: f.getAll('pain_symptom'),
       pain_description: str('pain_description') || null, pain_actions: str('pain_actions') || null, pain_period: str('pain_period') || null,
     }, a);
