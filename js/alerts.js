@@ -1,5 +1,5 @@
 // alerts.js — automated notification & alert engine + RTP status tiers
-import { fluidLossPct, romPct, sgtDay, HIGH_INTENSITY } from './store.js?v=6';
+import { fluidLossPct, romPct, sgtDay, HIGH_INTENSITY } from './store.js?v=7';
 
 // Severity: 'red' (🔴 Restricted-worthy) | 'yellow' (🟡 Warning) | 'info'
 // Each alert: { severity, icon, title, detail, checkinId, athleteId }
