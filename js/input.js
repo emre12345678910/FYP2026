@@ -1,6 +1,6 @@
 // input.js — Athlete INPUT app controller.
 // Three logs that mirror the dashboard tabs:
-//   • Daily log     — body mass, blood pressure, sleep, hydration, nutrition
+//   • Daily log     — body mass, blood pressure, sleep, hydration
 //   • Training log   — training load, pain & injury, range of motion
 //   • Mental log     — RESTQ / POMS / TSCI / SMS-II questionnaires
 // Data is written to the same localStorage the Dashboard reads from.
@@ -11,10 +11,10 @@ import {
   getHydrationToday, addBottle, removeBottle, DEFAULT_BOTTLE_ML,
   hydrationGoalMl, exerciseMinutesToday,
   exportData, importData, pullState, startSync, isShared, resolveBackend,
-  BP_TIMINGS, INTENSITY_LEVELS, MACRO_TAGS, PAIN_SYMPTOMS,
-} from './store.js?v=5';
-import { QUESTIONNAIRES, itemId } from './psych.js?v=5';
-import { hydrationWeekChart, bpWeekChart, bodyMassWeekChart, sleepChart } from './charts.js?v=5';
+  BP_TIMINGS, INTENSITY_LEVELS, PAIN_SYMPTOMS,
+} from './store.js?v=6';
+import { QUESTIONNAIRES, itemId } from './psych.js?v=6';
+import { hydrationWeekChart, bpWeekChart, bodyMassWeekChart, sleepChart } from './charts.js?v=6';
 
 const root = document.getElementById('app');
 // section = top-level ('physio' | 'mental'); physioSub = 'daily' | 'training'
@@ -215,18 +215,6 @@ function dailyLog(a) {
         </div>
         <input type="hidden" name="sleep_hours" id="sleep-hours">
         <input type="hidden" name="sleep_minutes" id="sleep-minutes">
-      </section>
-
-      <!-- Nutrition -->
-      <section class="dl-card dl-wide">
-        <div class="dl-card-head"><h3>Nutrition Log</h3><a href="#" class="hist-link" data-history="diet">History</a></div>
-        <div class="dl-row-fields">
-          <label class="dl-field">Pre-workout meal<input type="text" name="pre_workout_meal" placeholder="e.g. Chicken rice, 2.5h before"></label>
-          <label class="dl-field">Post-workout meal<input type="text" name="post_workout_meal" placeholder="e.g. Whey shake, banana"></label>
-          <label class="dl-field">Main meal<input type="text" name="main_meal" placeholder="e.g. Grilled fish, veg, sweet potato"></label>
-        </div>
-        <label class="check-inline">Fueled before session (ate 2–3 h prior)?<input type="checkbox" name="fueled_before_session"></label>
-        <div class="tag-row">${MACRO_TAGS.map((t) => `<label class="tag"><input type="checkbox" name="quality_tag" value="${t}">${t}</label>`).join('')}</div>
       </section>
 
       <div class="form-actions dl-wide">
@@ -501,22 +489,6 @@ function napLogTable(checkins) {
   return `<div class="table-wrap"><table class="data-table"><thead><tr><th>Time (SGT)</th><th>Duration</th><th>Status</th></tr></thead><tbody>${rows}</tbody></table></div>`;
 }
 
-function dietLogTable(checkins) {
-  const rows = [];
-  checkins.slice().reverse().forEach((c) => {
-    const nl = c.nutrition_log || {};
-    const ts = formatSgt(c.timestampUtc);
-    const tags = (nl.quality_tags || []).map((m) => `<span class="pill">${esc(m)}</span>`).join(' ');
-    const meals = [['Pre-workout', nl.pre_workout_meal], ['Post-workout', nl.post_workout_meal], ['Main meal', nl.main_meal]].filter(([, v]) => v && v.trim());
-    meals.forEach(([win, desc], i) => rows.push(`<tr>
-      <td>${i === 0 ? esc(ts) : ''}</td><td><span class="pill">${win}</span></td><td>${esc(desc)}</td>
-      <td>${win === 'Pre-workout' ? (nl.fueled_before_session ? '<span class="pill ok">ate 2–3h before</span>' : '<span class="pill warn">not timely</span>') : ''}</td>
-      <td>${i === 0 ? (tags || '—') : ''}</td></tr>`));
-  });
-  return rows.length ? `<div class="table-wrap"><table class="data-table"><thead><tr><th>Time (SGT)</th><th>Window</th><th>Meal</th><th>Fueling</th><th>Tags</th></tr></thead><tbody>${rows.join('')}</tbody></table></div>`
-    : '<p class="muted">No meals logged yet.</p>';
-}
-
 function openHistory(kind, a) {
   const checkins = checkinsForAthlete(a.id);
   const sub = 'BOXING · TRACK · RECOVER · REPEAT';
@@ -616,10 +588,6 @@ function openHistory(kind, a) {
           <td>${(c.pain_symptoms || []).map((s) => `<span class="pill">${esc(s)}</span>`).join(' ') || '—'}</td><td>${esc(c.pain_actions || '—')}</td></tr>`).join('')
           : '<tr><td colspan="6" class="muted">No pain entries yet.</td></tr>'}</tbody></table></div>`;
     return historyModal('Pain & Symptoms History', sub, body);
-  }
-
-  if (kind === 'diet') {
-    return historyModal('Nutrition History', sub, dietLogTable(checkins));
   }
 }
 
@@ -722,10 +690,6 @@ function bindDaily(a) {
       bp_systolic: num('bp_systolic'), bp_diastolic: num('bp_diastolic'), bp_timing: str('bp_timing') || null,
       sleep_type: str('sleep_type') || null, sleep_hours: num('sleep_hours'), sleep_minutes: num('sleep_minutes'),
       sleep_start: str('sleep_start') || null, sleep_end: str('sleep_end') || null,
-      nutrition_log: {
-        pre_workout_meal: str('pre_workout_meal'), post_workout_meal: str('post_workout_meal'), main_meal: str('main_meal'),
-        quality_tags: f.getAll('quality_tag'), fueled_before_session: f.get('fueled_before_session') === 'on',
-      },
     }, a);
     flashSaved(form, '✓ Daily log saved (SGT)');
   });
