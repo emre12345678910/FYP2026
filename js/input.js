@@ -17,7 +17,8 @@ import { QUESTIONNAIRES, itemId } from './psych.js';
 import { hydrationWeekChart, bpWeekChart, bodyMassWeekChart, sleepChart } from './charts.js';
 
 const root = document.getElementById('app');
-let state = { log: 'daily', selectedAthlete: null };
+// section = top-level ('physio' | 'mental'); physioSub = 'daily' | 'training'
+let state = { section: 'physio', physioSub: 'daily', selectedAthlete: null };
 
 function athleteById(id) { return getAthletes().find((a) => a.id === id); }
 function esc(s) {
@@ -44,9 +45,8 @@ function render() {
         </div>
       </div>
       <nav class="tabs">
-        <button class="tab ${state.log === 'daily' ? 'active' : ''}" data-log="daily">📅 Daily log</button>
-        <button class="tab ${state.log === 'training' ? 'active' : ''}" data-log="training">🔥 Training log</button>
-        <button class="tab ${state.log === 'mental' ? 'active' : ''}" data-log="mental">🧠 Mental log</button>
+        <button class="tab ${state.section === 'physio' ? 'active' : ''}" data-section="physio">🫀 Physiological</button>
+        <button class="tab ${state.section === 'mental' ? 'active' : ''}" data-section="mental">🧠 Mental log</button>
       </nav>
       <div class="athlete-picker-top">
         <select id="athlete-select" title="Select athlete">${opts || '<option>No athletes</option>'}</select>
@@ -62,21 +62,34 @@ function render() {
       </div>
     </header>
     <main>${!a ? '<section class="panel"><p class="muted">Add an athlete to start logging.</p></section>'
-      : state.log === 'daily' ? dailyLog(a)
-      : state.log === 'training' ? trainingLog(a)
-      : mentalLog(a)}</main>
+      : state.section === 'mental' ? mentalLog(a)
+      : physioSection(a)}</main>
   `;
 
   bindShell();
   if (!a) return;
-  if (state.log === 'daily') bindDaily(a);
-  if (state.log === 'training') bindTraining(a);
-  if (state.log === 'mental') bindMental(a);
+  if (state.section === 'mental') { bindMental(a); return; }
+  // Physiological section
+  if (state.physioSub === 'daily') bindDaily(a);
+  else bindTraining(a);
+}
+
+// Physiological section = a Daily / Training sub-tab bar + the chosen log.
+function physioSection(a) {
+  const subBar = `
+    <div class="subtabs">
+      <button class="subtab ${state.physioSub === 'daily' ? 'active' : ''}" data-sub="daily">📅 Daily log</button>
+      <button class="subtab ${state.physioSub === 'training' ? 'active' : ''}" data-sub="training">🔥 Training log</button>
+    </div>`;
+  return subBar + (state.physioSub === 'daily' ? dailyLog(a) : trainingLog(a));
 }
 
 function bindShell() {
   root.querySelectorAll('.tab').forEach((b) =>
-    b.addEventListener('click', () => { state.log = b.dataset.log; render(); }));
+    b.addEventListener('click', () => { state.section = b.dataset.section; render(); }));
+
+  root.querySelectorAll('[data-sub]').forEach((b) =>
+    b.addEventListener('click', () => { state.physioSub = b.dataset.sub; render(); }));
 
   const sel = root.querySelector('#athlete-select');
   if (sel) sel.addEventListener('change', () => { state.selectedAthlete = sel.value; render(); });

@@ -624,9 +624,15 @@ a.ghost { text-decoration: none; display: inline-flex; align-items: center; }
 
 .hydration-summary { display: flex; justify-content: space-between; align-items: baseline; }
 .hydration-controls { display: flex; align-items: flex-end; gap: 12px; }
-.hydration-controls .bottle-cap { flex: 1; }
+.hydration-controls .bottle-cap { flex: 0 1 150px; }
 .hydration-controls .bottle-cap input { width: 90px; }
-.bottle-btn.primary { white-space: nowrap; }
+/* Wider "+1 bottle" button in the Daily-Log hydration card */
+.bottle-btn.primary {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: auto; height: auto; flex: 1 1 auto; min-width: 180px;
+  white-space: nowrap; padding: 12px 20px; border-radius: 10px;
+  font-size: 15px; font-weight: 700;
+}
 
 @media (max-width: 760px) { .dl-grid { grid-template-columns: 1fr; } }
 
