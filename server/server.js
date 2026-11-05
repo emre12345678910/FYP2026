@@ -136,7 +136,7 @@ server.listen(PORT, '0.0.0.0', () => {
   console.log('\n🥊  Eastside FC prototype server running\n');
   console.log(`   On this machine:   http://localhost:${PORT}/`);
   for (const a of addrs) console.log(`   On your network:   http://${a}:${PORT}/   ← open this on your friend's device`);
-  console.log(`\n   Input app:         .../input.html`);
-  console.log(`   Coach dashboard:   .../index.html`);
+  console.log(`\n   Athlete Daily Log: .../          (index.html — default)`);
+  console.log(`   Coach dashboard:   .../dashboard.html`);
   console.log(`   Shared data file:  ${DATA_FILE}\n`);
 });
