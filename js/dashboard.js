@@ -5,18 +5,18 @@
 // Reads from the same localStorage the Athlete Input app writes to.
 import {
   getAthletes, checkinsForAthlete, mentalLogsForAthlete,
-  fluidLossPct, bpCategory, formatHoursMinutes, formatSgt, sgtDay, sgtWeek, romPct,
+  bpCategory, formatHoursMinutes, formatSgt, sgtDay, sgtWeek,
   getOverride, exportData, importData, pullState, startSync, isShared, resolveBackend,
-} from './store.js?v=8';
-import { evaluateAthlete, readinessTier, evaluateReadinessStatus, tierMeta } from './alerts.js?v=8';
+} from './store.js?v=9';
+import { evaluateAthlete, readinessTier, evaluateReadinessStatus, tierMeta } from './alerts.js?v=9';
 import {
-  romChart, srpeChart, painChart, hydrationChart, sleepChart, nutritionChart,
+  srpeChart, painChart, sleepChart,
   restqProfileChart, restqBalanceChart, pomsProfileChart, pomsTmdChart,
   tsciChart, smsProfileChart, smsRaiChart, weeklyTrendChart,
-} from './charts.js?v=8';
+} from './charts.js?v=9';
 import {
   QUESTIONNAIRES, scoreRestq, scorePoms, scoreTsci, scoreSms,
-} from './psych.js?v=8';
+} from './psych.js?v=9';
 
 const root = document.getElementById('app');
 // tab: 'physio' | 'psych' ; physioSub: 'daily' | 'training'
@@ -189,7 +189,7 @@ function detail() {
 
   const head = `
     <div class="detail-head">
-      <h2>${esc(a.name)} <span class="muted small">· ${[a.combatType, a.gender, a.age != null ? a.age + 'y' : null, a.currentWeight != null ? a.currentWeight + ' kg' : null, 'baseline ROM ' + a.romBaseline + '°'].filter(Boolean).map(esc).join(' · ')}</span></h2>
+      <h2>${esc(a.name)} <span class="muted small">· ${[a.combatType, a.gender, a.age != null ? a.age + 'y' : null, a.currentWeight != null ? a.currentWeight + ' kg' : null].filter(Boolean).map(esc).join(' · ')}</span></h2>
       <span class="tier big ${status.cls}">${status.icon} ${status.tier}${status.overridden ? ' ✎ override' : ''}</span>
     </div>
     <div class="override-bar"><span class="muted small">Auto readiness: ${auto.icon} ${auto.tier} · showing ${state.tab === 'physio' ? 'Physiological' : state.tab === 'psych' ? 'Psychological' : 'Weekly Trends'} data (read-only)</span></div>`;
@@ -228,25 +228,15 @@ function avg(items, pick) {
 function dailyPanel(a, checkins) {
   if (!checkins.length) return '<section class="panel"><p class="muted">No daily data yet for this athlete.</p></section>';
   const days = groupByDay(checkins);
-  const hydSeries = days.map((d) => ({ label: d.label, pre: avg(d.items, (c) => c.pre_weight_kg), post: avg(d.items, (c) => c.post_weight_kg) }))
-    .filter((d) => d.pre != null || d.post != null);
   const sleepSeries = days.map((d) => ({ label: d.label, hours: avg(d.items.filter((c) => c.sleep_type !== 'Nap'), (c) => c.sleep_hours) }))
     .filter((d) => d.hours != null);
-  const nutSeries = days.map((d) => ({
-    label: d.label,
-    workload: avg(d.items, (c) => c.workload),
-    fueled: d.items.filter((c) => c.workload != null).every((c) => { const nl = c.nutrition_log || {}; return !!(nl.pre_workout_meal && nl.pre_workout_meal.trim()) && nl.fueled_before_session === true; }),
-  })).filter((d) => d.workload != null);
 
   return `
     <div class="charts">
-      <div class="chart-card">${hydrationChart(hydSeries)}</div>
       <div class="chart-card">${sleepChart(sleepSeries)}</div>
-      <div class="chart-card">${nutritionChart(nutSeries)}</div>
     </div>
     ${bodyMassSection(checkins)}
-    ${bpSection(checkins)}
-    ${foodSection(checkins)}`;
+    ${bpSection(checkins)}`;
 }
 
 function bodyMassSection(checkins) {
@@ -274,46 +264,23 @@ function bpSection(checkins) {
     : '<p class="muted">No blood-pressure readings yet.</p>'}</section>`;
 }
 
-function foodSection(checkins) {
-  const rows = checkins.filter((c) => { const nl = c.nutrition_log || {}; return nl.pre_workout_meal || nl.post_workout_meal || nl.main_meal; })
-    .slice().reverse().map((c) => {
-      const nl = c.nutrition_log || {};
-      return `<tr><td>${esc(formatSgt(c.timestampUtc))}</td>
-        <td>${esc(nl.pre_workout_meal || '—')} ${nl.fueled_before_session ? '<span class="pill ok">timely</span>' : (nl.pre_workout_meal ? '<span class="pill warn">late</span>' : '')}</td>
-        <td>${esc(nl.post_workout_meal || '—')}</td><td>${esc(nl.main_meal || '—')}</td>
-        <td>${(nl.quality_tags || []).map((m) => `<span class="pill">${esc(m)}</span>`).join(' ') || '—'}</td></tr>`;
-    }).join('');
-  return `<section class="panel"><h3>🍽️ Food &amp; Fueling log</h3>
-    <div class="table-wrap"><table class="data-table"><thead><tr><th>Time (SGT)</th><th>Pre-workout</th><th>Post-workout</th><th>Main meal</th><th>Tags</th></tr></thead>
-    <tbody>${rows || '<tr><td colspan="5" class="muted">No food logs yet</td></tr>'}</tbody></table></div></section>`;
-}
 
-/* ---- Training sub-tab: training load, pain, ROM ---- */
+/* ---- Training sub-tab: training load, pain ---- */
 function trainingPanel(a, checkins) {
   if (!checkins.length) return '<section class="panel"><p class="muted">No training data yet for this athlete.</p></section>';
   const days = groupByDay(checkins);
-  const romSeries = days.map((d) => ({ label: d.label, pct: avg(d.items, (c) => (c.rom_percentage != null ? c.rom_percentage : romPct(c.goniometer_degrees, a.romBaseline))) })).filter((d) => d.pct != null);
   const painSeries = days.map((d) => ({ label: d.label, srpe: avg(d.items, (c) => c.srpe), pain: avg(d.items, (c) => c.pain_score) })).filter((d) => d.srpe != null || d.pain != null);
 
-  const rawRows = checkins.filter((c) => c.srpe != null || c.pain_score != null || c.goniometer_degrees != null)
-    .slice().reverse().map((c) => {
-      const loss = fluidLossPct(c.pre_weight_kg, c.post_weight_kg);
-      const rom = c.rom_percentage;
-      return `<tr>
+  const rawRows = checkins.filter((c) => c.srpe != null || c.pain_score != null)
+    .slice().reverse().map((c) => `<tr>
         <td>${esc(formatSgt(c.timestampUtc))}</td>
         <td>${esc(c.intensity_level || '—')}</td>
         <td>${c.srpe ?? '—'}</td>
         <td>${c.duration_mins ?? '—'}</td>
         <td>${c.workload ?? '—'}</td>
-        <td>${c.pre_weight_kg ?? '—'} / ${c.post_weight_kg ?? '—'}</td>
-        <td class="${loss != null && loss > 2 ? 'cell-red' : ''}">${loss != null ? loss.toFixed(1) + '%' : '—'}</td>
-        <td>${c.sweat_rate_lph != null ? c.sweat_rate_lph.toFixed(2) + ' L/h' : '—'}</td>
         <td class="${c.pain_score != null && c.pain_score >= 6 ? 'cell-red' : ''}">${c.pain_score ?? '—'}</td>
         <td>${esc(c.pain_location || '—')}${(c.pain_symptoms && c.pain_symptoms.length) ? ` <span class="pill" title="${esc(c.pain_symptoms.join('; '))}">${c.pain_symptoms.length} symptom${c.pain_symptoms.length === 1 ? '' : 's'}</span>` : ''}</td>
-        <td>${esc(c.joint_tested || '—')}${c.goniometer_degrees != null ? ' · ' + c.goniometer_degrees + '°' : ''}</td>
-        <td class="${rom != null && rom < 60 ? 'cell-red' : ''}">${rom != null ? rom.toFixed(0) + '%' : '—'}</td>
-      </tr>`;
-    }).join('');
+      </tr>`).join('');
 
   const alerts = evaluateAthlete(a, checkins);
   const alertList = alerts.length
@@ -323,7 +290,6 @@ function trainingPanel(a, checkins) {
   return `
     <div class="detail-cols">
       <div class="charts">
-        <div class="chart-card">${romChart(romSeries)}</div>
         <div class="chart-card">${srpeChart(painSeries)}</div>
         <div class="chart-card">${painChart(painSeries)}</div>
       </div>
@@ -331,8 +297,8 @@ function trainingPanel(a, checkins) {
     </div>
     <section class="panel"><h3>Training sessions — raw metrics</h3>
       <div class="table-wrap"><table class="data-table"><thead><tr>
-        <th>SGT</th><th>Intensity</th><th>sRPE</th><th>Dur</th><th>Workload</th><th>Pre/Post kg</th><th>Fluid%</th><th>Sweat</th><th>Pain</th><th>Location</th><th>Joint / °</th><th>ROM%</th>
-      </tr></thead><tbody>${rawRows || '<tr><td colspan="12" class="muted">No training data</td></tr>'}</tbody></table></div>
+        <th>SGT</th><th>Intensity</th><th>sRPE</th><th>Dur</th><th>Workload</th><th>Pain</th><th>Location</th>
+      </tr></thead><tbody>${rawRows || '<tr><td colspan="7" class="muted">No training data</td></tr>'}</tbody></table></div>
     </section>`;
 }
 
@@ -448,8 +414,6 @@ function physioTrends(a) {
 
   // One descriptor per physiological metric: how to pull its value + chart it.
   const MS = [
-    { sub: 'rom', label: '📐 ROM %', pick: (c) => (c.rom_percentage != null ? c.rom_percentage : romPct(c.goniometer_degrees, a.romBaseline)), dp: 0,
-      opts: { title: 'ROM % of baseline (higher is better)', min: 0, max: 100, ref: 60, refLabel: '60% alert', unit: '%', emptyMsg: 'No ROM data yet' } },
     { sub: 'pain', label: '🤕 Pain (NPRS)', pick: (c) => c.pain_score, dp: 1,
       opts: { title: 'Pain — NPRS 0–10 (lower is better)', min: 0, max: 10, ref: 3, refLabel: 'watch ≥3', emptyMsg: 'No pain data yet' } },
     { sub: 'load', label: '🔥 Workload', pick: (c) => c.workload, dp: 0,
@@ -458,8 +422,6 @@ function physioTrends(a) {
       opts: { title: 'Overnight sleep — hours (7–10 h recommended)', min: 0, max: 12, ref: 7, refLabel: '7 h', emptyMsg: 'No sleep data yet' } },
     { sub: 'mass', label: '⚖️ Body mass', pick: (c) => c.body_mass_kg, dp: 1,
       opts: { title: 'Body mass — kg', emptyMsg: 'No body-mass data yet' } },
-    { sub: 'fluid', label: '💧 Fluid loss %', pick: (c) => fluidLossPct(c.pre_weight_kg, c.post_weight_kg), dp: 1,
-      opts: { title: 'Acute fluid loss — % (limit 2%)', min: 0, max: 4, ref: 2, refLabel: '2% limit', unit: '%', emptyMsg: 'No pre/post weight data yet' } },
   ];
 
   const subs = [{ sub: 'all', label: '📊 All' }, ...MS.map((m) => ({ sub: m.sub, label: m.label }))];
