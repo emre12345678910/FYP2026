@@ -58,7 +58,7 @@ function render() {
         <button class="ghost" id="export-data" title="Download all data as a file">⬇ Export</button>
         <button class="ghost" id="import-data" title="Load data from an exported file">⬆ Import</button>
         <input type="file" accept="application/json,.json" id="import-file" hidden>
-        <a class="ghost" href="index.html" title="Open the coach dashboard">📊 Dashboard →</a>
+        <a class="ghost" href="dashboard.html" title="Open the coach dashboard">📊 Dashboard →</a>
       </div>
     </header>
     <main>${!a ? '<section class="panel"><p class="muted">Add an athlete to start logging.</p></section>'

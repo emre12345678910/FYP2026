@@ -10,8 +10,8 @@ The project is split into **two pages** that share the same code and `localStora
 
 | Page | Who | Purpose |
 |---|---|---|
-| **`input.html`** | Athletes | **Input app** — three logs: **Daily**, **Training**, **Mental** |
-| **`index.html`** | Coach | **Dashboard** (read-only / output only) — **Physiological** tab (sub-tabs *Daily* / *Training*) + **Psychological** tab |
+| **`index.html`** (default) | Athletes | **Athlete Daily Log** — card-based logs: **Daily**, **Training**, **Mental** (`input.html` is an alias) |
+| **`dashboard.html`** | Coach | **Dashboard** (read-only / output only) — **Physiological** tab (sub-tabs *Daily* / *Training*) + **Psychological** tab |
 
 The input app writes; the dashboard reads. Because they share the same browser origin + `localStorage`,
 data entered on a device shows up on that device's dashboard automatically. To move data between devices,
@@ -37,8 +37,8 @@ On this machine:   http://localhost:8080/
 On your network:   http://192.168.1.42:8080/   ← open this on your friend's device
 ```
 
-- **Coach dashboard:** `http://<address>:8080/` (or `/index.html`)
-- **Athlete input:**   `http://<address>:8080/input.html`
+- **Athlete Daily Log:** `http://<address>:8080/` (the default page)
+- **Coach dashboard:**    `http://<address>:8080/dashboard.html`
 
 Shared data is saved to `server/data.json` (survives restarts; git-ignored).
 The backend auto-detects: open the pages **through this server** and sharing turns on
@@ -50,8 +50,8 @@ automatically; open them any other way and each browser just uses its own local 
 
 ```bash
 python3 -m http.server 8000
-# Dashboard: http://localhost:8000/index.html
-# Input:     http://localhost:8000/input.html
+# Athlete Daily Log: http://localhost:8000/          (default)
+# Coach dashboard:   http://localhost:8000/dashboard.html
 ```
 
 Any static server works. Here each browser stores its **own** data in `localStorage`
@@ -121,8 +121,9 @@ Derived from the worst active alert: 🟢 **Cleared** · 🟡 **Modified** · �
 ## Project layout
 
 ```
-index.html        # Coach Dashboard shell (read-only)
-input.html        # Athlete Input app shell
+index.html        # Athlete Daily Log shell (default landing page)
+input.html        # Athlete Daily Log shell (alias of index.html)
+dashboard.html    # Coach Dashboard shell (read-only)
 styles.css        # dark fight-club theme
 js/api.js         # swappable backend adapter (local / server / firebase) — change here only
 js/store.js       # persistence (incl. mental logs), SGT timestamping, derived-metric math
