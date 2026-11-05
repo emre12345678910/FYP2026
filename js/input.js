@@ -1,7 +1,7 @@
 // input.js — Athlete INPUT app controller.
 // Three logs that mirror the dashboard tabs:
 //   • Daily log     — body mass, blood pressure, sleep, hydration
-//   • Training log   — training load, pain & injury, range of motion
+//   • Training log   — training load, pain & injury
 //   • Mental log     — RESTQ / POMS / TSCI / SMS-II questionnaires
 // Data is written to the same localStorage the Dashboard reads from.
 import {
@@ -12,9 +12,9 @@ import {
   hydrationGoalMl, exerciseMinutesToday,
   exportData, importData, pullState, startSync, isShared, resolveBackend,
   BP_TIMINGS, INTENSITY_LEVELS, PAIN_SYMPTOMS,
-} from './store.js?v=6';
-import { QUESTIONNAIRES, itemId } from './psych.js?v=6';
-import { hydrationWeekChart, bpWeekChart, bodyMassWeekChart, sleepChart } from './charts.js?v=6';
+} from './store.js?v=7';
+import { QUESTIONNAIRES, itemId } from './psych.js?v=7';
+import { hydrationWeekChart, bpWeekChart, bodyMassWeekChart, sleepChart } from './charts.js?v=7';
 
 const root = document.getElementById('app');
 // section = top-level ('physio' | 'mental'); physioSub = 'daily' | 'training'
@@ -238,7 +238,7 @@ function trainingLog(a) {
     </div>
 
     <form id="training-form" class="dl-grid">
-      <!-- Training Load + ROM + Pain nested under Training -->
+      <!-- Training Load + Pain nested under Training -->
       <section class="dl-card dl-wide">
         <div class="dl-card-head"><h3>Training Load &amp; Intensity</h3><a href="#" class="hist-link" data-history="training">History</a></div>
         <div class="dl-row-fields">
@@ -254,11 +254,6 @@ function trainingLog(a) {
           <label class="dl-field">Pre-session weight (kg)<input type="number" step="0.1" name="pre_weight_kg" id="pre-weight"></label>
           <label class="dl-field">Post-session weight (kg)<input type="number" step="0.1" name="post_weight_kg" id="post-weight"></label>
           <div class="dl-field-static"><span class="dl-field-label">Sweat rate</span><span class="dl-field-value" id="sweat-rate-display">—</span></div>
-        </div>
-        <div class="dl-row-fields">
-          <label class="dl-field">Joint tested<input type="text" name="joint_tested" placeholder="e.g. Ankle Dorsiflexion"></label>
-          <label class="dl-field">Goniometer angle (°)<input type="number" min="0" max="360" name="goniometer_degrees"></label>
-          <label class="dl-field">Baseline ROM (°)<input type="number" min="1" max="360" name="rom_baseline" id="rom-baseline" value="${a.romBaseline}"></label>
         </div>
 
         <!-- Pain & Symptoms nested under Training -->
@@ -696,11 +691,6 @@ function bindDaily(a) {
 }
 
 function bindTraining(a) {
-  const romBaselineInput = root.querySelector('#rom-baseline');
-  if (romBaselineInput) romBaselineInput.addEventListener('change', () => {
-    const val = Number(romBaselineInput.value); if (val > 0) updateAthlete(a.id, { romBaseline: val });
-  });
-
   const preW = root.querySelector('#pre-weight');
   const postW = root.querySelector('#post-weight');
   const durW = root.querySelector('#duration-mins');
@@ -727,13 +717,10 @@ function bindTraining(a) {
     const f = new FormData(form);
     const num = (k) => (f.get(k) !== '' && f.get(k) != null ? Number(f.get(k)) : null);
     const str = (k) => (f.get(k) ? String(f.get(k)).trim() : '');
-    const romBaseline = num('rom_baseline');
-    if (romBaseline && romBaseline > 0) updateAthlete(a.id, { romBaseline });
     saveCheckin({
       athleteId: a.id,
       srpe: num('srpe'), intensity_level: str('intensity_level') || null, duration_mins: num('duration_mins'),
       pre_weight_kg: num('pre_weight_kg'), post_weight_kg: num('post_weight_kg'),
-      joint_tested: str('joint_tested'), goniometer_degrees: num('goniometer_degrees'),
       pain_score: num('pain_score'), pain_location: str('pain_location'), pain_symptoms: f.getAll('pain_symptom'),
       pain_description: str('pain_description') || null, pain_actions: str('pain_actions') || null, pain_period: str('pain_period') || null,
     }, a);
