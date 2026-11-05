@@ -177,3 +177,57 @@ export function nutritionChart(series) {
     bars
   );
 }
+
+/* ---- History (weekly) charts ---- */
+
+// Weekly hydration intake (L/day) as a red line with a flat goal reference line.
+export function hydrationWeekChart(series, goalMl) {
+  if (!series.length) return emptyChart('No hydration data yet');
+  const labels = series.map((s) => s.label);
+  const goalL = (goalMl || 0) / 1000;
+  const vals = series.map((s) => (s.ml || 0) / 1000);
+  const min = 0;
+  const max = Math.max(4, Math.ceil(Math.max(goalL, ...vals)));
+  const pts = series.map((s, i) => ({ x: scaleX(i, series.length), y: scaleY((s.ml || 0) / 1000, min, max) }));
+  const goalY = scaleY(goalL, min, max);
+  const dots = pts.map((p) => `<circle cx="${p.x}" cy="${p.y}" r="3" class="dot-red"/>`).join('');
+  return svgWrap(
+    axes(min, max, labels, { yFmt: (v) => v.toFixed(1), title: 'Weekly Intake (L/day)' }) +
+    `<line x1="${P.l}" y1="${goalY}" x2="${W - P.r}" y2="${goalY}" class="goal-line"/>` +
+    `<text x="${W - P.r}" y="${goalY - 4}" class="ann">${goalL.toFixed(1)} L goal</text>` +
+    `<path d="${path(pts)}" class="line-red"/>` + dots
+  );
+}
+
+// Weekly blood pressure: systolic (red) and diastolic (dark) lines.
+export function bpWeekChart(series) {
+  if (!series.length) return emptyChart('No blood-pressure data yet');
+  const labels = series.map((s) => s.label);
+  const all = series.flatMap((s) => [s.sys, s.dia]).filter((v) => v != null);
+  const min = Math.floor(Math.min(...all, 60) / 10) * 10 - 10;
+  const max = Math.ceil(Math.max(...all, 140) / 10) * 10 + 10;
+  const sysPts = series.map((s, i) => ({ x: scaleX(i, series.length), y: scaleY(s.sys, min, max) }));
+  const diaPts = series.map((s, i) => ({ x: scaleX(i, series.length), y: scaleY(s.dia, min, max) }));
+  const dots = (pts, cls) => pts.map((p) => `<circle cx="${p.x}" cy="${p.y}" r="3" class="${cls}"/>`).join('');
+  return svgWrap(
+    axes(min, max, labels, { yFmt: (v) => v.toFixed(0), title: 'Weekly Readings — Systolic (red) / Diastolic (dark)' }) +
+    `<path d="${path(sysPts)}" class="line-red"/>` + dots(sysPts, 'dot-red') +
+    `<path d="${path(diaPts)}" class="line-dark"/>` + dots(diaPts, 'dot-dark')
+  );
+}
+
+// Weekly body-mass (kg) as a red line.
+export function bodyMassWeekChart(series) {
+  const data = series.filter((s) => s.kg != null);
+  if (!data.length) return emptyChart('No body-mass data yet');
+  const labels = data.map((s) => s.label);
+  const kgs = data.map((s) => s.kg);
+  const min = Math.floor(Math.min(...kgs) - 1);
+  const max = Math.ceil(Math.max(...kgs) + 1);
+  const pts = data.map((s, i) => ({ x: scaleX(i, data.length), y: scaleY(s.kg, min, max) }));
+  const dots = pts.map((p) => `<circle cx="${p.x}" cy="${p.y}" r="3" class="dot-red"/>`).join('');
+  return svgWrap(
+    axes(min, max, labels, { yFmt: (v) => v.toFixed(1) + 'kg', title: 'Body Mass (kg)' }) +
+    `<path d="${path(pts)}" class="line-red"/>` + dots
+  );
+}

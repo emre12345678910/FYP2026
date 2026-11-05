@@ -210,6 +210,16 @@ export function checkinsForAthlete(athleteId) {
     .sort((a, b) => new Date(a.timestampUtc) - new Date(b.timestampUtc));
 }
 
+// Most-recent body-mass recording for an athlete (used to show "previous
+// weight" and compute the change vs the one being entered). Returns the
+// numeric kg value or null.
+export function lastBodyMass(athleteId) {
+  const withMass = getCheckins()
+    .filter((c) => c.athleteId === athleteId && c.body_mass_kg != null)
+    .sort((a, b) => new Date(a.timestampUtc) - new Date(b.timestampUtc));
+  return withMass.length ? withMass[withMass.length - 1].body_mass_kg : null;
+}
+
 /* --------------------------- Hydration tracking -------------------------- */
 // Daily water intake, keyed by athleteId + SGT day. Stores ml drunk + the
 // number of bottle taps, so the bar can show both volume and count.
@@ -218,6 +228,12 @@ const HYDRATION_KEY = 'eastside_fc_hydration_v1';
 function getHydrationStore() {
   const raw = localStorage.getItem(HYDRATION_KEY);
   return raw ? JSON.parse(raw) : {};
+}
+
+// Total ml drunk by an athlete on a given SGT calendar day (YYYY-MM-DD).
+export function hydrationMlForDay(athleteId, sgtDayKey) {
+  const rec = getHydrationStore()[`${athleteId}|${sgtDayKey}`];
+  return rec ? (rec.ml || 0) : 0;
 }
 
 // Normalises a stored record to the current shape ({ ml, taps, entries[] }),

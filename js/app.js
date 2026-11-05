@@ -1,10 +1,10 @@
 // app.js — UI controller for the Eastside FC Rehab & Monitoring App
 import {
-  getAthletes, addAthlete, updateAthlete, deleteAthlete, saveCheckin, deleteCheckin, checkinsForAthlete,
+  getAthletes, addAthlete, updateAthlete, deleteAthlete, saveCheckin, deleteCheckin, checkinsForAthlete, lastBodyMass,
   fluidLossPct, totalWorkload, romPct, sweatRateLph, bpCategory, sleepHoursBetween, sleepMinutesBetween, formatHoursMinutes, formatSgt, sgtDay,
   getOverride, setOverride,
   getHydrationToday, addBottle, removeBottle, DEFAULT_BOTTLE_ML,
-  hydrationGoalMl, exerciseMinutesToday,
+  hydrationGoalMl, exerciseMinutesToday, hydrationMlForDay,
   exportData, importData,
   COMBAT_TYPES, BP_TIMINGS, INTENSITY_LEVELS, HIGH_INTENSITY, MACRO_TAGS, PAIN_SYMPTOMS,
 } from './store.js';
@@ -256,6 +256,180 @@ function openInjuryGuide() {
   document.body.appendChild(overlay);
 }
 
+/* ------------------------------ History modals --------------------------- */
+// Generic modal shell for a section's History (summary + optional chart + log).
+function historyModal(title, subtitle, bodyHtml) {
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+  overlay.innerHTML = `
+    <div class="modal history-modal" role="dialog" aria-label="${esc(title)}">
+      <div class="modal-head">
+        <div>
+          <h2>${esc(title)}</h2>
+          <p class="daily-sub">${esc(subtitle)}</p>
+        </div>
+        <button class="modal-close" aria-label="Close">✕</button>
+      </div>
+      ${bodyHtml}
+    </div>`;
+  const close = () => overlay.remove();
+  overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
+  overlay.querySelector('.modal-close').addEventListener('click', close);
+  document.addEventListener('keydown', function onEsc(e) {
+    if (e.key === 'Escape') { close(); document.removeEventListener('keydown', onEsc); }
+  });
+  document.body.appendChild(overlay);
+}
+
+function summaryCards(cards) {
+  return `<div class="hist-summary">${cards.map((c) =>
+    `<div class="hist-stat"><span class="hist-stat-k">${esc(c.k)}</span><span class="hist-stat-v ${c.cls || ''}">${c.v}</span></div>`).join('')}</div>`;
+}
+
+// Opens the History view for a given section kind.
+function openHistory(kind) {
+  const a = athleteById(state.selectedAthlete);
+  if (!a) return;
+  const checkins = checkinsForAthlete(a.id);
+  const sub = 'BOXING · TRACK · RECOVER · REPEAT';
+
+  if (kind === 'hydration') {
+    // 7-day consumed-per-day from the hydration store
+    const days = last7Days();
+    const series = days.map((d) => ({ label: d.label, ml: hydrationMlForDay(a.id, d.key) }));
+    const goal = hydrationGoalMl(a, 0).total;
+    const total = series.reduce((s, x) => s + x.ml, 0);
+    const avgMl = series.length ? total / series.length : 0;
+    const reached = series.filter((x) => x.ml >= goal).length;
+    const body = `
+      ${summaryCards([
+        { k: 'Total Consumed', v: (total / 1000).toFixed(1) + ' L' },
+        { k: 'Daily Goal', v: (goal / 1000).toFixed(1) + ' L', cls: 'accent' },
+        { k: 'Avg Daily Intake', v: (avgMl / 1000).toFixed(2) + ' L' },
+        { k: 'Goal Reached', v: reached + (reached === 1 ? ' Day' : ' Days'), cls: 'green' },
+      ])}
+      <div class="hist-chart">${hydrationWeekChart(series, goal)}</div>
+      <div class="table-wrap"><table class="data-table"><thead><tr><th>Date</th><th>Day</th><th>Consumed</th><th>Status</th></tr></thead>
+        <tbody>${series.slice().reverse().map((x) => `<tr><td>${x.label}</td><td>${x.day}</td><td>${(x.ml / 1000).toFixed(1)} L</td>
+          <td>${x.ml >= goal ? '<span class="pill ok">Goal reached</span>' : '<span class="pill warn">Under goal</span>'}</td></tr>`).join('')}</tbody></table></div>`;
+    return historyModal('Hydration History', sub, body);
+  }
+
+  if (kind === 'bp') {
+    const list = checkins.filter((c) => c.bp_systolic != null && c.bp_diastolic != null);
+    const sys = list.map((c) => c.bp_systolic), dia = list.map((c) => c.bp_diastolic);
+    const mean = (arr) => arr.length ? Math.round(arr.reduce((s, v) => s + v, 0) / arr.length * 10) / 10 : 0;
+    const within = list.filter((c) => bpCategory(c.bp_systolic, c.bp_diastolic)?.cls === 'green').length;
+    const series = list.slice(-7).map((c) => ({ label: sgtDay(c.timestampUtc).slice(5), sys: c.bp_systolic, dia: c.bp_diastolic }));
+    const body = `
+      ${summaryCards([
+        { k: 'Avg Systolic', v: mean(sys) + ' mmHg' },
+        { k: 'Avg Diastolic', v: mean(dia) + ' mmHg' },
+        { k: 'Reference', v: '&lt;120 / &lt;80', cls: 'accent' },
+        { k: 'Within Reference', v: within + (within === 1 ? ' day' : ' days'), cls: 'green' },
+      ])}
+      <div class="hist-chart">${bpWeekChart(series)}</div>
+      ${bpLogTable(checkins)}`;
+    return historyModal('Blood Pressure History', sub, body);
+  }
+
+  if (kind === 'sleep') {
+    const nights = checkins.filter((c) => c.sleep_type !== 'Nap' && c.sleep_hours != null);
+    const series = nights.slice(-7).map((c) => ({ label: sgtDay(c.timestampUtc).slice(5), hours: c.sleep_hours }));
+    const avgH = nights.length ? Math.round(nights.reduce((s, c) => s + c.sleep_hours, 0) / nights.length * 10) / 10 : 0;
+    const inBand = nights.filter((c) => c.sleep_hours >= 7 && c.sleep_hours <= 10).length;
+    const body = `
+      ${summaryCards([
+        { k: 'Avg Overnight', v: avgH + ' h' },
+        { k: 'Recommended', v: '7–10 h', cls: 'accent' },
+        { k: 'Nights 7–10 h', v: inBand + (inBand === 1 ? ' night' : ' nights'), cls: 'green' },
+        { k: 'Naps logged', v: checkins.filter((c) => c.sleep_type === 'Nap').length },
+      ])}
+      <div class="hist-chart">${sleepChart(series)}</div>
+      <h3 class="hist-h3">Overnight sleep log</h3>
+      ${sleepLogTable(nights)}
+      <h3 class="hist-h3">💤 Nap log</h3>
+      ${napLogTable(checkins)}`;
+    return historyModal('Sleep History', sub, body);
+  }
+
+  if (kind === 'bodymass') {
+    const list = checkins.filter((c) => c.body_mass_kg != null);
+    const series = list.slice(-7).map((c) => ({ label: sgtDay(c.timestampUtc).slice(5), pct: null, kg: c.body_mass_kg }));
+    const first = list[0]?.body_mass_kg, latest = list[list.length - 1]?.body_mass_kg;
+    const change = (first != null && latest != null) ? (latest - first) : null;
+    const body = `
+      ${summaryCards([
+        { k: 'Latest', v: latest != null ? latest + ' kg' : '—' },
+        { k: 'Earliest', v: first != null ? first + ' kg' : '—' },
+        { k: 'Net change', v: change == null ? '—' : (change > 0 ? '+' : '') + change.toFixed(1) + ' kg', cls: change != null && change < 0 ? 'accent' : 'green' },
+        { k: 'Recordings', v: list.length },
+      ])}
+      <div class="hist-chart">${bodyMassWeekChart(series)}</div>
+      ${bodyMassLogTable(checkins)}`;
+    return historyModal('Body Mass History', sub, body);
+  }
+
+  if (kind === 'training') {
+    const list = checkins.filter((c) => c.intensity_level || c.srpe != null);
+    const body = `
+      <h3 class="hist-h3">Session History <span class="muted small">· RPE 1–10</span></h3>
+      <div class="table-wrap"><table class="data-table"><thead><tr><th>Date</th><th>Training Type</th><th>RPE</th><th>Duration</th><th>Workload</th></tr></thead>
+        <tbody>${list.length ? list.slice().reverse().map((c) => `<tr>
+          <td>${esc(formatSgt(c.timestampUtc))}</td>
+          <td>${esc(c.intensity_level || '—')}</td>
+          <td>${c.srpe ?? '—'}</td>
+          <td>${c.duration_mins != null ? c.duration_mins + ' min' : '—'}</td>
+          <td>${c.workload != null ? c.workload : '—'}</td>
+        </tr>`).join('') : '<tr><td colspan="5" class="muted">No sessions logged yet.</td></tr>'}</tbody></table></div>`;
+    return historyModal('Training History', sub, body);
+  }
+
+  if (kind === 'pain') {
+    const list = checkins.filter((c) => c.pain_score != null || (c.pain_symptoms && c.pain_symptoms.length) || c.pain_location);
+    const body = `
+      <h3 class="hist-h3">Pain &amp; Symptoms History</h3>
+      <div class="table-wrap"><table class="data-table"><thead><tr><th>Date</th><th>Pain</th><th>Type</th><th>Period</th><th>Symptoms</th><th>Actions</th></tr></thead>
+        <tbody>${list.length ? list.slice().reverse().map((c) => `<tr>
+          <td>${esc(formatSgt(c.timestampUtc))}</td>
+          <td>${c.pain_score ?? '—'}</td>
+          <td>${esc(c.pain_location || '—')}</td>
+          <td>${esc(c.pain_period || '—')}</td>
+          <td>${(c.pain_symptoms || []).map((s) => `<span class="pill">${esc(s)}</span>`).join(' ') || '—'}</td>
+          <td>${esc(c.pain_actions || '—')}</td>
+        </tr>`).join('') : '<tr><td colspan="6" class="muted">No pain entries yet.</td></tr>'}</tbody></table></div>`;
+    return historyModal('Pain & Symptoms History', sub, body);
+  }
+
+  if (kind === 'diet') {
+    return historyModal('Nutrition History', sub, dietLogInner(checkins));
+  }
+}
+
+// --- History helpers ---
+function last7Days() {
+  const out = [];
+  const now = new Date();
+  for (let i = 6; i >= 0; i--) {
+    const d = new Date(now.getTime() - i * 86400000);
+    const dd = sgtDay(d.toISOString());
+    out.push({ key: dd, label: dd.slice(5), day: ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][new Date(dd + 'T00:00:00Z').getUTCDay()] });
+  }
+  return out;
+}
+
+// Body-mass single-metric log table rows for a pre-filtered list (reused shapes).
+function sleepLogTable(nights) {
+  if (!nights.length) return '<p class="muted">No overnight sleep logged yet.</p>';
+  const rows = nights.slice().reverse().map((c) => `<tr>
+    <td>${esc(formatSgt(c.timestampUtc))}</td>
+    <td>${c.sleep_start && c.sleep_end ? esc(c.sleep_start + '–' + c.sleep_end) : '—'}</td>
+    <td>${sleepDisplay(c)}</td>
+    <td>${c.sleep_hours > 10 ? '<span class="pill warn">over 10h</span>' : c.sleep_hours < 7 ? '<span class="pill warn">under 7h</span>' : '<span class="pill ok">7–10h ✓</span>'}</td>
+  </tr>`).join('');
+  return `<div class="table-wrap"><table class="data-table"><thead><tr><th>Time (SGT)</th><th>Window</th><th>Duration</th><th>Status</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+}
+
 // Display a check-in's sleep as "7 h 30 min" (prefers stored minutes; falls
 // back to hours for older records saved before the minutes field existed).
 function sleepDisplay(c) {
@@ -267,6 +441,7 @@ import { evaluateAthlete, readinessTier, evaluateReadinessStatus, tierMeta } fro
 // NOTE: alerts.js import is placed above the helpers that use it (hoisted ES import).
 import {
   romChart, srpeChart, painChart, hydrationChart, sleepChart, nutritionChart,
+  hydrationWeekChart, bpWeekChart, bodyMassWeekChart,
 } from './charts.js';
 
 const root = document.getElementById('app');
@@ -448,10 +623,9 @@ function athleteAlertBanner() {
   </section>`;
 }
 
-// Hydration tracker: a health-bar + bottle button (+1) + a timestamped log.
-// Daily goal is computed from body weight (30–40 ml/kg) plus today's exercise
-// (500–1000 ml per hour trained).
-function hydrationTracker() {
+// Hydration card: a health-bar + bottle button (+1), with a History link.
+// Daily goal is computed from body weight (30–40 ml/kg) plus today's exercise.
+function hydrationCard() {
   if (!state.selectedAthlete) return '';
   const a = athleteById(state.selectedAthlete);
   if (!a) return '';
@@ -463,260 +637,198 @@ function hydrationTracker() {
   const pct = goal > 0 ? Math.min(100, Math.round((today.ml / goal) * 100)) : 0;
   const goalReached = today.ml >= goal;
   const barCls = pct >= 100 ? 'full' : pct >= 50 ? 'ok' : 'low';
-
-  // Goal breakdown explainer
-  const goalExplain = g.weight
-    ? `Target = ${g.baseline} ml (${g.weight} kg × 35 ml/kg)` +
-      (g.exercise > 0 ? ` + ${g.exercise} ml (${g.exerciseHours.toFixed(1)} h exercise × 750 ml/h)` : '')
-    : 'Add a body weight to this athlete for a personalised target.';
-
-  // Timestamped water log (most recent first)
-  const logRows = (today.entries || []).slice().reverse().map((e, i, arr) => `
-    <tr>
-      <td>${arr.length - i}</td>
-      <td>${esc(e.label || e.sgt || '')}</td>
-      <td>+${e.ml} ml</td>
-    </tr>`).join('');
+  const litres = (n) => (n / 1000).toFixed(1) + ' L';
 
   return `
-  <section class="panel hydration-panel">
-    <div class="panel-head">
-      <h2>💧 Hydration — Today (SGT)</h2>
-      <label class="bottle-cap">Bottle capacity (ml)
-        <input type="number" id="bottle-ml" min="50" step="50" value="${bottleMl}">
+  <section class="dl-card">
+    <div class="dl-card-head"><h3>Hydration</h3><a href="#" class="hist-link" data-history="hydration">History</a></div>
+    <div class="hydration-bar">
+      <div class="hydration-fill ${barCls}" style="width:${pct}%"></div>
+    </div>
+    <div class="hydration-summary">
+      <span class="muted small">Consumed / Goal</span>
+      <strong>${litres(today.ml)} / ${litres(goal)}</strong>
+    </div>
+    <div class="hydration-controls">
+      <label class="dl-field bottle-cap">Bottle Capacity
+        <input type="number" id="bottle-ml" min="50" step="50" value="${bottleMl}"> <span class="muted small">ml</span>
       </label>
+      <button class="bottle-btn primary" id="bottle-add" type="button" title="Tap each time you finish a bottle (+${bottleMl} ml)">🍶 +1 bottle</button>
     </div>
-    <div class="hydration-row">
-      <button class="bottle-btn" id="bottle-add" title="Tap each time you finish a bottle (+${bottleMl} ml)">
-        <span class="bottle-emoji">🍶</span>
-        <span class="bottle-plus">+1</span>
-      </button>
-      <div class="hydration-bar-wrap">
-        <div class="hydration-bar">
-          <div class="hydration-fill ${barCls}" style="width:${pct}%"></div>
-          <span class="hydration-label">${today.ml} / ${goal} ml · ${pct}%</span>
-        </div>
-        <div class="hydration-meta">
-          <span>${today.taps} bottle${today.taps === 1 ? '' : 's'} drunk today</span>
-          <button class="link-del" id="bottle-remove" ${today.taps === 0 ? 'disabled' : ''}>undo last</button>
-          ${goalReached ? '<span class="pill ok">🎯 Goal reached!</span>' : ''}
-        </div>
-        <div class="hydration-goal-explain muted small">${esc(goalExplain)}</div>
-      </div>
-    </div>
-    <div class="water-log">
-      <h3>🕒 Water log — today</h3>
-      ${today.entries && today.entries.length ? `
-      <div class="table-wrap">
-        <table class="data-table">
-          <thead><tr><th>#</th><th>Time (SGT)</th><th>Amount</th></tr></thead>
-          <tbody>${logRows}</tbody>
-        </table>
-      </div>` : '<p class="muted">No water logged yet today — tap the bottle to start.</p>'}
+    <div class="hydration-meta">
+      <span>${today.taps} bottle${today.taps === 1 ? '' : 's'} today</span>
+      <button class="link-del" id="bottle-remove" type="button" ${today.taps === 0 ? 'disabled' : ''}>undo last</button>
+      ${goalReached ? '<span class="pill ok">🎯 Goal reached!</span>' : ''}
     </div>
   </section>`;
 }
 
 function athleteView(athletes) {
-
   const a = athleteById(state.selectedAthlete);
-  const profileBits = a ? [
-    a.combatType,
-    a.gender,
-    a.age != null ? `Age ${a.age}` : null,
-    a.currentWeight != null ? `${a.currentWeight} kg` : null,
-  ].filter(Boolean) : [];
-  const profile = profileBits.length
-    ? `<div class="athlete-profile muted small">${profileBits.map(esc).join(' · ')}</div>` : '';
+  const prevMass = a ? lastBodyMass(a.id) : null;
+
+  if (!a) {
+    return `<section class="panel"><p class="muted">No athlete selected. Use <strong>+ New</strong> at the top to add one.</p></section>`;
+  }
 
   return `
   ${athleteAlertBanner()}
-  ${hydrationTracker()}
-  <section class="panel">
-    ${profile}
-    <div class="panel-head">
-      <h2>Daily / Session Check-in <span class="muted small">· ${a ? esc(a.name) : 'select an athlete above'}</span></h2>
+
+  <div class="daily-log">
+    <div class="daily-log-head">
+      <div>
+        <h1 class="daily-title">Daily Log</h1>
+        <p class="daily-sub">BOXING · TRAIN · RECOVER · REPEAT</p>
+      </div>
+      <button class="save-log-btn primary" type="submit" form="checkin-form">Save Log</button>
     </div>
 
-    <form id="checkin-form" class="form-grid">
-      <div class="sync-note">
-        ℹ️ <strong>Data is stored on this device only</strong> (in this browser). To use your athletes on another device, click <strong>⬇ Export</strong> up top, then <strong>⬆ Import</strong> the file on the other device.
-      </div>
-      <div class="body-mass-row">
-        <fieldset class="body-mass-fieldset">
-          <legend>⚖️ Body Mass</legend>
-          <label>Body mass (kg)<input type="number" step="0.1" name="body_mass_kg"></label>
-          <small class="hint">Each recording is auto-timestamped in SGT and added to the log beside this.</small>
-        </fieldset>
-        <div class="body-mass-log-inline">
-          <span class="field-label">⚖️ Body Mass log <span class="muted small">· timestamped (SGT)</span></span>
-          ${a ? bodyMassLogTable(checkinsForAthlete(a.id)) : '<p class="muted">Select an athlete.</p>'}
-        </div>
-      </div>
+    <form id="checkin-form" class="dl-grid">
 
-      <div class="body-mass-row">
-        <fieldset class="body-mass-fieldset">
-          <legend>🩺 Blood Pressure</legend>
-          <label>Timing
-            <select name="bp_timing" id="bp-timing">
-              <option value="">—</option>
-              ${BP_TIMINGS.map((t) => `<option>${t}</option>`).join('')}
-            </select>
-          </label>
-          <label>Systolic (mmHg)<input type="number" min="40" max="300" name="bp_systolic" id="bp-systolic" placeholder="e.g. 120"></label>
-          <label>Diastolic (mmHg)<input type="number" min="30" max="200" name="bp_diastolic" id="bp-diastolic" placeholder="e.g. 80"></label>
-          <div class="sweat-result">
-            <span class="sweat-label">Reading</span>
-            <span class="sweat-value" id="bp-category-display">—</span>
-          </div>
-          <small class="hint">Each reading is auto-timestamped in SGT and added to the log beside this.</small>
-        </fieldset>
-        <div class="body-mass-log-inline">
-          <span class="field-label">🩺 Blood Pressure log <span class="muted small">· timestamped (SGT)</span></span>
-          ${a ? bpLogTable(checkinsForAthlete(a.id)) : '<p class="muted">Select an athlete.</p>'}
-        </div>
-      </div>
+      <!-- Hydration (tracker unchanged) -->
+      ${hydrationCard()}
 
-      <fieldset>
-        <legend>🔥 Training Load &amp; Intensity</legend>
-        <label>Session RPE (1–10)
-          <select name="srpe">
+      <!-- Body Mass -->
+      <section class="dl-card">
+        <div class="dl-card-head"><h3>Body Mass</h3><a href="#" class="hist-link" data-history="bodymass">History</a></div>
+        <label class="dl-field">Current Weight
+          <input type="number" step="0.1" name="body_mass_kg" id="body-mass-input" placeholder="e.g. 72.5">
+        </label>
+        <div class="dl-field-static">
+          <span class="dl-field-label">Previous Weight</span>
+          <span class="dl-field-value" id="prev-weight">${prevMass != null ? prevMass + ' kg' : '—'}</span>
+        </div>
+        <div class="dl-change-row">
+          <div class="dl-change"><span class="dl-field-label">Change</span><span class="dl-change-val" id="mass-change">—</span></div>
+          <div class="dl-change"><span class="dl-field-label">% Change</span><span class="dl-change-val" id="mass-change-pct">—</span></div>
+        </div>
+      </section>
+
+      <!-- Blood Pressure -->
+      <section class="dl-card">
+        <div class="dl-card-head"><h3>Blood Pressure</h3><a href="#" class="hist-link" data-history="bp">History</a></div>
+        <div class="dl-two">
+          <label class="dl-field">Systolic (mmHg)<input type="number" min="40" max="300" name="bp_systolic" id="bp-systolic" placeholder="120"></label>
+          <label class="dl-field">Diastolic (mmHg)<input type="number" min="30" max="200" name="bp_diastolic" id="bp-diastolic" placeholder="80"></label>
+        </div>
+        <label class="dl-field">Timing
+          <select name="bp_timing" id="bp-timing">
             <option value="">—</option>
-            ${Array.from({ length: 10 }, (_, i) => i + 1).map((n) => `<option value="${n}">${n}</option>`).join('')}
+            ${BP_TIMINGS.map((t) => `<option>${t}</option>`).join('')}
           </select>
         </label>
-        <label>Type of training
-          <select name="intensity_level">
-            <option value="">—</option>
-            ${INTENSITY_LEVELS.map((l) => `<option>${l}</option>`).join('')}
-          </select>
-        </label>
-        <label>Duration (min)<input type="number" min="0" name="duration_mins" id="duration-mins"></label>
-        <label>Pre-session weight (kg)<input type="number" step="0.1" name="pre_weight_kg" id="pre-weight"></label>
-        <label>Post-session weight (kg)<input type="number" step="0.1" name="post_weight_kg" id="post-weight"></label>
-        <div class="sweat-result">
-          <span class="sweat-label">Sweat rate</span>
-          <span class="sweat-value" id="sweat-rate-display">—</span>
-        </div>
-        <small class="hint">Sweat rate = (pre − post + water drunk today) ÷ hours trained.</small>
-      </fieldset>
+        <div class="dl-inline-status"><span id="bp-category-display" class="muted">—</span></div>
+      </section>
 
-      <fieldset class="wide">
-        <legend>🤕 Pain &amp; Injury</legend>
-
-        <div class="pain-symptoms">
-          <span class="field-label">Pain symptoms <span class="muted small">(select any that apply)</span></span>
-          <div class="tag-row">
-            ${PAIN_SYMPTOMS.map((s) => `<label class="tag"><input type="checkbox" name="pain_symptom" value="${esc(s)}">${esc(s)}</label>`).join('')}
-          </div>
-        </div>
-
-        <div class="pain-grid">
-          <label>Pain score NPRS (0–10)
-            <select name="pain_score">
-              <option value="">—</option>
-              ${Array.from({ length: 11 }, (_, i) => i).map((n) => `<option value="${n}">${n}${n === 0 ? ' (no pain)' : ''}</option>`).join('')}
-            </select>
-          </label>
-          <label>Pain location<input type="text" name="pain_location" placeholder="e.g. Left Ankle"></label>
-          <label>Pain period<input type="text" name="pain_period" placeholder="e.g. 3 days, since last sparring"></label>
-        </div>
-
-        <label>How did it happen? <span class="muted small">(optional)</span>
-          <textarea name="pain_description" rows="2" placeholder="Describe what you were doing when the pain started…"></textarea>
-        </label>
-        <label>Actions taken to reduce the pain <span class="muted small">(optional)</span>
-          <textarea name="pain_actions" rows="2" placeholder="e.g. Iced for 15 min, rested, taped the wrist, stretched…"></textarea>
-        </label>
-
-        <a href="#" class="treat-link" id="treat-injuries-link">📋 How to treat injuries in the gym</a>
-      </fieldset>
-
-      <fieldset>
-        <legend>📐 Range of Motion</legend>
-        <label>Joint tested<input type="text" name="joint_tested" placeholder="e.g. Ankle Dorsiflexion"></label>
-        <label>Goniometer angle (°)<input type="number" min="0" max="360" name="goniometer_degrees"></label>
-        <label>Baseline ROM (°)<input type="number" min="1" max="360" name="rom_baseline" id="rom-baseline" value="${a ? a.romBaseline : 135}"></label>
-        <small class="hint">Goniometer angle is mapped to % of this baseline automatically. Updating it here saves to the athlete's profile.</small>
-      </fieldset>
-
-      <fieldset>
-        <legend>😴 Sleep</legend>
-        <label>Type of sleep
+      <!-- Sleep -->
+      <section class="dl-card">
+        <div class="dl-card-head"><h3>Sleep</h3><a href="#" class="hist-link" data-history="sleep">History</a></div>
+        <label class="dl-field">Type of sleep
           <select name="sleep_type" id="sleep-type">
             <option value="Overnight">Overnight sleep</option>
             <option value="Nap">Nap</option>
           </select>
         </label>
-        <div class="sleep-tracker">
-          <div class="sleep-times">
-            <label>Slept at
-              <div class="time-row">
-                <input type="time" name="sleep_start" id="sleep-start">
-                <button type="button" class="ghost sleep-now" data-target="sleep-start">now</button>
-              </div>
-            </label>
-            <label>Woke at
-              <div class="time-row">
-                <input type="time" name="sleep_end" id="sleep-end">
-                <button type="button" class="ghost sleep-now" data-target="sleep-end">now</button>
-              </div>
-            </label>
-          </div>
-          <div class="sleep-result">
-            <span class="sleep-hours-label">Sleep duration</span>
-            <span class="sleep-hours-value" id="sleep-hours-display">—</span>
-            <input type="hidden" name="sleep_hours" id="sleep-hours">
-            <input type="hidden" name="sleep_minutes" id="sleep-minutes">
-          </div>
+        <div class="dl-two">
+          <label class="dl-field">Sleep Time
+            <div class="time-row"><input type="time" name="sleep_start" id="sleep-start"><button type="button" class="ghost sleep-now" data-target="sleep-start">now</button></div>
+          </label>
+          <label class="dl-field">Wake Up
+            <div class="time-row"><input type="time" name="sleep_end" id="sleep-end"><button type="button" class="ghost sleep-now" data-target="sleep-end">now</button></div>
+          </label>
         </div>
-        <small class="hint">Tap “now” at bedtime and again on waking — hours are calculated automatically (overnight supported).</small>
-      </fieldset>
+        <div class="dl-total-row">
+          <span class="dl-field-label">Total Hours</span>
+          <span class="dl-total-value" id="sleep-hours-display">—</span>
+        </div>
+        <input type="hidden" name="sleep_hours" id="sleep-hours">
+        <input type="hidden" name="sleep_minutes" id="sleep-minutes">
+      </section>
 
-      <fieldset class="wide">
-        <legend>🍽️ Qualitative Nutrition Log</legend>
-        <label>Pre-workout meal<input type="text" name="pre_workout_meal" placeholder="e.g. Chicken rice, electrolyte water, 2.5h before"></label>
-        <label>Post-workout meal<input type="text" name="post_workout_meal" placeholder="e.g. Whey shake, banana, rice with beef"></label>
-        <label>Main meal<input type="text" name="main_meal" placeholder="e.g. Grilled fish, veg, sweet potato"></label>
+      <!-- Training Log (Training + ROM + Pain nested under it) -->
+      <section class="dl-card dl-wide">
+        <div class="dl-card-head"><h3>Training Log</h3><a href="#" class="hist-link" data-history="training">History</a></div>
+        <div class="dl-row-fields">
+          <label class="dl-field">Training Type
+            <select name="intensity_level">
+              <option value="">—</option>
+              ${INTENSITY_LEVELS.map((l) => `<option>${l}</option>`).join('')}
+            </select>
+          </label>
+          <label class="dl-field">RPE (1–10)
+            <select name="srpe">
+              <option value="">—</option>
+              ${Array.from({ length: 10 }, (_, i) => i + 1).map((n) => `<option value="${n}">${n}</option>`).join('')}
+            </select>
+          </label>
+          <label class="dl-field">Duration (min)<input type="number" min="0" name="duration_mins" id="duration-mins" placeholder="e.g. 60"></label>
+        </div>
+        <div class="dl-row-fields">
+          <label class="dl-field">Pre-session weight (kg)<input type="number" step="0.1" name="pre_weight_kg" id="pre-weight"></label>
+          <label class="dl-field">Post-session weight (kg)<input type="number" step="0.1" name="post_weight_kg" id="post-weight"></label>
+          <div class="dl-field-static"><span class="dl-field-label">Sweat rate</span><span class="dl-field-value" id="sweat-rate-display">—</span></div>
+        </div>
+
+        <div class="dl-row-fields">
+          <label class="dl-field">Joint tested<input type="text" name="joint_tested" placeholder="e.g. Ankle Dorsiflexion"></label>
+          <label class="dl-field">Goniometer angle (°)<input type="number" min="0" max="360" name="goniometer_degrees"></label>
+          <label class="dl-field">Baseline ROM (°)<input type="number" min="1" max="360" name="rom_baseline" id="rom-baseline" value="${a.romBaseline}"></label>
+        </div>
+
+        <!-- Pain & Symptoms nested under Training -->
+        <div class="dl-subsection">
+          <div class="dl-card-head"><h4>Pain &amp; Symptoms</h4><a href="#" class="hist-link" data-history="pain">History</a></div>
+          <div class="dl-row-fields">
+            <label class="dl-field">Pain Level (Rating)
+              <select name="pain_score">
+                <option value="">—</option>
+                ${Array.from({ length: 11 }, (_, i) => i).map((n) => `<option value="${n}">${n}${n === 0 ? ' (no pain)' : ''}</option>`).join('')}
+              </select>
+            </label>
+            <label class="dl-field">Type of Pain Felt<input type="text" name="pain_location" placeholder="e.g. Soreness, Left Ankle"></label>
+            <label class="dl-field">Pain Time Period<input type="text" name="pain_period" placeholder="e.g. 2 Days"></label>
+          </div>
+          <div class="pain-symptoms">
+            <span class="dl-field-label">Symptoms List <span class="muted small">(select any that apply)</span></span>
+            <div class="tag-row">
+              ${PAIN_SYMPTOMS.map((s) => `<label class="tag"><input type="checkbox" name="pain_symptom" value="${esc(s)}">${esc(s)}</label>`).join('')}
+            </div>
+          </div>
+          <label class="dl-field">How did it happen? <span class="muted small">(optional)</span>
+            <textarea name="pain_description" rows="2" placeholder="Describe what you were doing when the pain started…"></textarea>
+          </label>
+          <label class="dl-field">Actions to reduce pain <span class="muted small">(optional)</span>
+            <textarea name="pain_actions" rows="2" placeholder="e.g. Ice bath, foam rolling, rest"></textarea>
+          </label>
+          <a href="#" class="treat-link" id="treat-injuries-link">📋 How to treat injuries in the gym</a>
+        </div>
+      </section>
+
+      <!-- Nutrition -->
+      <section class="dl-card dl-wide">
+        <div class="dl-card-head"><h3>Nutrition Log</h3><a href="#" class="hist-link" data-history="diet">History</a></div>
+        <div class="dl-row-fields">
+          <label class="dl-field">Pre-workout meal<input type="text" name="pre_workout_meal" placeholder="e.g. Chicken rice, 2.5h before"></label>
+          <label class="dl-field">Post-workout meal<input type="text" name="post_workout_meal" placeholder="e.g. Whey shake, banana, rice"></label>
+          <label class="dl-field">Main meal<input type="text" name="main_meal" placeholder="e.g. Grilled fish, veg, sweet potato"></label>
+        </div>
         <label class="check-inline">Fueled before session (ate 2–3 h prior)?
           <input type="checkbox" name="fueled_before_session">
         </label>
         <div class="tag-row" id="macro-tags">
           ${MACRO_TAGS.map((t) => `<label class="tag"><input type="checkbox" name="quality_tag" value="${t}">${t}</label>`).join('')}
         </div>
-      </fieldset>
+      </section>
 
-      <div class="form-actions">
+      <div class="form-actions dl-wide">
         <button type="submit" class="primary">Save check-in</button>
         <span id="save-msg" class="save-msg"></span>
       </div>
     </form>
-  </section>
-
-  ${recentCheckins()}
-  ${athleteCharts()}
+  </div>
   `;
 }
 
-// "My Progress" — the athlete's own graphs & charts for all their metrics.
-function athleteCharts() {
-  if (!state.selectedAthlete) return '';
-  const a = athleteById(state.selectedAthlete);
-  if (!a) return '';
-  const checkins = checkinsForAthlete(a.id);
-  if (!checkins.length) {
-    return '<section class="panel"><h2>📊 My Progress</h2><p class="muted">Save a few check-ins to see your trends here.</p></section>';
-  }
-  return `
-  <section class="panel">
-    <h2>📊 My Progress <span class="muted small">· your personal trends across all metrics</span></h2>
-    <div class="charts">${renderCharts(a, checkins)}</div>
-  </section>
-  ${napLog(checkins)}
-  ${dietLog(checkins)}`;
-}
-
-// Timestamped Body Mass log — every body-mass recording with its SGT time.
 // Table markup for the blood-pressure log (every reading, timestamped).
 function bpLogTable(checkins) {
   const list = checkins.filter((c) => c.bp_systolic != null && c.bp_diastolic != null).slice().reverse();
@@ -763,9 +875,10 @@ function bodyMassLogTable(checkins) {
     </div>`;
 }
 
-// Separate nap log sheet — every nap, timestamped, flagged >90 min in red.
-function napLog(checkins) {
+// Nap log table — every nap, timestamped, flagged >90 min in red / <20 min.
+function napLogTable(checkins) {
   const list = checkins.filter((c) => c.sleep_type === 'Nap' && c.sleep_minutes != null).slice().reverse();
+  if (!list.length) return '<p class="muted">No naps logged yet. Log a nap by selecting “Nap” in the Sleep section.</p>';
   const rows = list.map((c) => {
     const m = c.sleep_minutes;
     const over = m > 90;
@@ -779,24 +892,11 @@ function napLog(checkins) {
       <td>${note}</td>
     </tr>`;
   }).join('');
-  return `
-  <section class="panel">
-    <h3>💤 Nap log <span class="muted small">· recommended 20–90 min · timestamped (SGT)</span></h3>
-    ${list.length ? `
-    <div class="table-wrap">
-      <table class="data-table" style="max-width:520px">
-        <thead><tr><th>Time (SGT)</th><th>Duration</th><th>Status</th></tr></thead>
-        <tbody>${rows}</tbody>
-      </table>
-    </div>` : '<p class="muted">No naps logged yet. Log a nap by selecting “Nap” in the Sleep section.</p>'}
-  </section>`;
+  return `<div class="table-wrap"><table class="data-table"><thead><tr><th>Time (SGT)</th><th>Duration</th><th>Status</th></tr></thead><tbody>${rows}</tbody></table></div>`;
 }
 
-// Timestamped diet / nutrition log sheet (most recent first). Shows each
-// logged meal entry with its SGT time, meal window, macro tags and fueling.
-function dietLog(checkins) {
-  // Flatten each check-in's nutrition_log into per-meal rows, keeping the
-  // check-in's SGT timestamp against every meal entry.
+// Diet log table — each meal entry with SGT time, window, macro tags, fueling.
+function dietLogInner(checkins) {
   const rows = [];
   checkins.slice().reverse().forEach((c) => {
     const nl = c.nutrition_log || {};
@@ -817,55 +917,9 @@ function dietLog(checkins) {
       </tr>`);
     });
   });
-
-  return `
-  <section class="panel">
-    <h3>🍽️ Diet Log <span class="muted small">· every meal entry, timestamped (SGT)</span></h3>
-    ${rows.length ? `
-    <div class="table-wrap">
-      <table class="data-table">
-        <thead><tr><th>Time (SGT)</th><th>Window</th><th>Meal</th><th>Fueling</th><th>Tags</th></tr></thead>
-        <tbody>${rows.join('')}</tbody>
-      </table>
-    </div>` : '<p class="muted">No meals logged yet. Add meals in the Nutrition section of a check-in.</p>'}
-  </section>`;
-}
-
-function recentCheckins() {
-  if (!state.selectedAthlete) return '';
-  const athletes = getAthletes();
-  const athlete = athletes.find((a) => a.id === state.selectedAthlete);
-  const list = checkinsForAthlete(state.selectedAthlete).slice().reverse().slice(0, 8);
-  if (!list.length) return '<section class="panel"><p class="muted">No check-ins yet for this athlete.</p></section>';
-  const rows = list.map((c) => {
-    const loss = fluidLossPct(c.pre_weight_kg, c.post_weight_kg);
-    const rom = c.rom_percentage;
-    const wl = c.workload;
-    return `<tr>
-      <td>${esc(formatSgt(c.timestampUtc))}</td>
-      <td>${c.intensity_level ? esc(c.intensity_level) : '—'}</td>
-      <td>${c.srpe ?? '—'}</td>
-      <td>${wl != null ? wl : '—'}</td>
-      <td>${c.pain_score ?? '—'}</td>
-      <td>${rom != null ? rom.toFixed(0) + '%' : '—'}</td>
-      <td>${loss != null ? loss.toFixed(1) + '%' : '—'}</td>
-      <td>${sleepDisplay(c)}</td>
-      <td><button class="link-del" data-del="${c.id}">delete</button></td>
-    </tr>`;
-  }).join('');
-  return `
-  <section class="panel">
-    <h2>Recent check-ins</h2>
-    <div class="table-wrap">
-      <table class="data-table">
-        <thead><tr>
-          <th>Timestamp (SGT)</th><th>Training type</th><th>sRPE</th><th>Workload</th>
-          <th>Pain</th><th>ROM%</th><th>Fluid loss</th><th>Sleep</th><th></th>
-        </tr></thead>
-        <tbody>${rows}</tbody>
-      </table>
-    </div>
-  </section>`;
+  return rows.length
+    ? `<div class="table-wrap"><table class="data-table"><thead><tr><th>Time (SGT)</th><th>Window</th><th>Meal</th><th>Fueling</th><th>Tags</th></tr></thead><tbody>${rows.join('')}</tbody></table></div>`
+    : '<p class="muted">No meals logged yet. Add meals in the Nutrition section of a check-in.</p>';
 }
 
 function bindAthleteForm() {
@@ -931,6 +985,33 @@ function bindAthleteForm() {
     }));
   if (sleepStart) sleepStart.addEventListener('change', recalcSleep);
   if (sleepEnd) sleepEnd.addEventListener('change', recalcSleep);
+
+  // --- Body Mass: live change vs previous recorded weight ---
+  const bodyMassInput = root.querySelector('#body-mass-input');
+  if (bodyMassInput) {
+    const prev = state.selectedAthlete ? lastBodyMass(state.selectedAthlete) : null;
+    const changeEl = root.querySelector('#mass-change');
+    const pctEl = root.querySelector('#mass-change-pct');
+    bodyMassInput.addEventListener('input', () => {
+      const cur = bodyMassInput.value !== '' ? Number(bodyMassInput.value) : null;
+      if (cur == null || prev == null) {
+        changeEl.textContent = '—'; pctEl.textContent = '—';
+        changeEl.className = 'dl-change-val'; pctEl.className = 'dl-change-val';
+        return;
+      }
+      const d = Math.round((cur - prev) * 10) / 10;
+      const pct = Math.round((d / prev) * 1000) / 10;
+      const sign = d > 0 ? '+' : '';
+      changeEl.textContent = `${sign}${d} kg`;
+      pctEl.textContent = `${sign}${pct}%`;
+      const cls = 'dl-change-val ' + (d > 0 ? 'up' : d < 0 ? 'down' : '');
+      changeEl.className = cls; pctEl.className = cls;
+    });
+  }
+
+  // --- History links (open per-section history modal) ---
+  root.querySelectorAll('[data-history]').forEach((lnk) =>
+    lnk.addEventListener('click', (e) => { e.preventDefault(); openHistory(lnk.dataset.history); }));
 
   // --- Live sweat-rate readout from pre/post weight + duration ---
   const preW = root.querySelector('#pre-weight');
