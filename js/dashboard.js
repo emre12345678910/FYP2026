@@ -7,16 +7,16 @@ import {
   getAthletes, checkinsForAthlete, mentalLogsForAthlete,
   bpCategory, formatHoursMinutes, formatSgt, sgtDay, sgtWeek,
   getOverride, exportData, importData, pullState, startSync, isShared, resolveBackend,
-} from './store.js?v=9';
-import { evaluateAthlete, readinessTier, evaluateReadinessStatus, tierMeta } from './alerts.js?v=9';
+} from './store.js?v=10';
+import { evaluateAthlete, readinessTier, evaluateReadinessStatus, tierMeta } from './alerts.js?v=10';
 import {
   srpeChart, painChart, sleepChart,
   restqProfileChart, restqBalanceChart, pomsProfileChart, pomsTmdChart,
   tsciChart, smsProfileChart, smsRaiChart, weeklyTrendChart,
-} from './charts.js?v=9';
+} from './charts.js?v=10';
 import {
   QUESTIONNAIRES, scoreRestq, scorePoms, scoreTsci, scoreSms,
-} from './psych.js?v=9';
+} from './psych.js?v=10';
 
 const root = document.getElementById('app');
 // tab: 'physio' | 'psych' ; physioSub: 'daily' | 'training'
