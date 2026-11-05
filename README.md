@@ -130,7 +130,7 @@ js/store.js       # persistence (incl. mental logs), SGT timestamping, derived-m
 js/alerts.js      # physiological alert engine + RTP status tiers
 js/charts.js      # tiny hand-rolled SVG charts (physio + psych), no chart library
 js/psych.js       # questionnaire definitions (RESTQ/POMS/TSCI/SMS-II) + scoring
-js/input.js       # Athlete Input controller (Daily / Training / Mental logs)
-js/dashboard.js   # Coach Dashboard controller (Physiological + Psychological tabs)
+js/input2.js      # Athlete Input controller (Daily / Training / Mental logs)
+js/dashboard2.js  # Coach Dashboard controller (Physiological + Psychological tabs)
 server/server.js  # zero-dependency Node server: static files + shared data API
 ```
