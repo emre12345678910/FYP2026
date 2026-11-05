@@ -588,3 +588,59 @@ a.ghost { text-decoration: none; display: inline-flex; align-items: center; }
    the per-metric sub-tabs — make them visually a touch stronger. */
 .subtabs.cat-tabs { margin-bottom: 10px; }
 .subtabs.cat-tabs .subtab { font-size: 14px; padding: 8px 18px; }
+
+/* ============================ Daily Log redesign ========================= */
+.daily-log { max-width: 1100px; margin: 0 auto; }
+.daily-log-head { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 18px; }
+.daily-title { margin: 0; font-size: 30px; font-weight: 800; letter-spacing: .5px; }
+.daily-sub { margin: 2px 0 0; font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 2px; }
+.save-log-btn { align-self: center; }
+
+.dl-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; }
+.dl-card { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 16px 18px; display: flex; flex-direction: column; gap: 12px; }
+.dl-wide { grid-column: 1 / -1; }
+.dl-card-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.dl-card-head h3 { margin: 0; font-size: 15px; color: var(--accent); }
+.dl-card-head h4 { margin: 0; font-size: 14px; color: var(--accent); }
+.hist-link { color: var(--accent); font-size: 12px; font-weight: 700; text-decoration: none; }
+.hist-link:hover { text-decoration: underline; }
+
+.dl-field { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--muted); }
+.dl-field input, .dl-field select, .dl-field textarea { background: #0e141b; color: var(--text); border: 1px solid var(--line); border-radius: 8px; padding: 9px 10px; font-size: 15px; font-family: inherit; }
+.dl-field-label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .4px; }
+.dl-field-static { display: flex; flex-direction: column; gap: 4px; background: var(--panel-2); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; }
+.dl-field-value { font-size: 16px; font-weight: 700; }
+.dl-two { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.dl-row-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; }
+.dl-change-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.dl-change { display: flex; flex-direction: column; gap: 2px; background: var(--panel-2); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; }
+.dl-change-val { font-size: 16px; font-weight: 800; }
+.dl-change-val.up { color: var(--green); }
+.dl-change-val.down { color: var(--red); }
+.dl-total-row { display: flex; justify-content: space-between; align-items: center; border-top: 1px solid var(--line); padding-top: 8px; }
+.dl-total-value { font-size: 17px; font-weight: 800; color: var(--green); }
+.dl-inline-status { font-size: 13px; font-weight: 600; }
+.dl-subsection { border-top: 1px solid var(--line); margin-top: 6px; padding-top: 12px; display: flex; flex-direction: column; gap: 12px; }
+
+.hydration-summary { display: flex; justify-content: space-between; align-items: baseline; }
+.hydration-controls { display: flex; align-items: flex-end; gap: 12px; }
+.hydration-controls .bottle-cap { flex: 1; }
+.hydration-controls .bottle-cap input { width: 90px; }
+.bottle-btn.primary { white-space: nowrap; }
+
+@media (max-width: 760px) { .dl-grid { grid-template-columns: 1fr; } }
+
+/* ----------------------------- History modal ---------------------------- */
+.history-modal { max-width: 860px; }
+.hist-summary { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin-bottom: 16px; }
+.hist-stat { background: var(--panel-2); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; display: flex; flex-direction: column; gap: 4px; }
+.hist-stat-k { font-size: 11px; color: var(--muted); }
+.hist-stat-v { font-size: 18px; font-weight: 800; }
+.hist-stat-v.accent { color: var(--accent); }
+.hist-stat-v.green { color: var(--green); }
+.hist-chart { background: var(--panel-2); border: 1px solid var(--line); border-radius: 10px; padding: 8px; margin-bottom: 16px; }
+.hist-h3 { font-size: 14px; color: var(--accent); margin: 16px 0 8px; }
+
+.chart .line-dark { fill: none; stroke: #93a4b5; stroke-width: 2; }
+.chart .dot-dark { fill: #93a4b5; }
+.chart .goal-line { stroke: var(--text); stroke-width: 1.5; stroke-dasharray: 6 4; opacity: .55; }
