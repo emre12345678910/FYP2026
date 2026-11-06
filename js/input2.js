@@ -7,14 +7,14 @@
 import {
   getAthletes, addAthlete, updateAthlete, deleteAthlete, saveCheckin, saveMentalLog,
   checkinsForAthlete, mentalLogsForAthlete, lastBodyMass, hydrationMlForDay,
-  bpCategory, sleepHoursBetween, sleepMinutesBetween, formatHoursMinutes, formatSgt, sgtDay,
+  bpCategory, sleepHoursBetween, sleepMinutesBetween, formatHoursMinutes, formatSgt, sgtDay, sgtWeek,
   getHydrationToday, addBottle, removeBottle, DEFAULT_BOTTLE_ML,
   hydrationGoalMl, exerciseMinutesToday,
   exportData, importData, pullState, startSync, isShared, resolveBackend,
   BP_TIMINGS, INTENSITY_LEVELS, PAIN_SYMPTOMS,
-} from './store.js?v=11';
-import { QUESTIONNAIRES, itemId } from './psych.js?v=11';
-import { hydrationWeekChart, bpWeekChart, bodyMassWeekChart, sleepChart } from './charts.js?v=11';
+} from './store.js?v=12';
+import { QUESTIONNAIRES, itemId } from './psych.js?v=12';
+import { hydrationWeekChart, bpWeekChart, bodyMassWeekChart, sleepChart } from './charts.js?v=12';
 
 const root = document.getElementById('app');
 // section = top-level ('physio' | 'mental'); physioSub = 'daily' | 'training'
@@ -557,8 +557,45 @@ function openHistory(kind, a) {
   }
 
   if (kind === 'training') {
-    const list = checkins.filter((c) => c.intensity_level || c.srpe != null);
+    const list = checkins.filter((c) => c.intensity_level || c.srpe != null || c.duration_mins != null);
+
+    // Weekly volume & frequency, grouped by ISO week (SGT).
+    //   Frequency = sessions logged that week; Volume = sum of workload (sRPE×min).
+    const weeks = new Map();
+    list.forEach((c) => {
+      const w = sgtWeek(c.timestampUtc);
+      if (!weeks.has(w.key)) weeks.set(w.key, { key: w.key, start: w.start, sessions: 0, volume: 0, minutes: 0, rpeSum: 0, rpeN: 0 });
+      const wk = weeks.get(w.key);
+      wk.sessions += 1;
+      if (c.workload != null) wk.volume += c.workload;
+      if (c.duration_mins != null) wk.minutes += c.duration_mins;
+      if (c.srpe != null) { wk.rpeSum += c.srpe; wk.rpeN += 1; }
+    });
+    const weekList = [...weeks.values()].sort((a, b) => (a.key < b.key ? 1 : -1)); // newest first
+    const avgSessions = weekList.length ? weekList.reduce((s, w) => s + w.sessions, 0) / weekList.length : 0;
+    const avgVolume = weekList.length ? weekList.reduce((s, w) => s + w.volume, 0) / weekList.length : 0;
+
+    const weeklyTable = weekList.length ? `
+      <div class="table-wrap"><table class="data-table">
+        <thead><tr><th>Week of</th><th>Frequency</th><th>Volume (sRPE×min)</th><th>Total minutes</th><th>Avg RPE</th></tr></thead>
+        <tbody>${weekList.map((w) => `<tr>
+          <td>${esc(w.start)}</td>
+          <td>${w.sessions} session${w.sessions === 1 ? '' : 's'}</td>
+          <td>${w.volume}</td>
+          <td>${w.minutes} min</td>
+          <td>${w.rpeN ? (w.rpeSum / w.rpeN).toFixed(1) : '—'}</td>
+        </tr>`).join('')}</tbody></table></div>`
+      : '<p class="muted">No sessions logged yet.</p>';
+
     const body = `
+      ${summaryCards([
+        { k: 'Weeks tracked', v: weekList.length },
+        { k: 'Avg sessions / week', v: avgSessions.toFixed(1), cls: 'accent' },
+        { k: 'Avg volume / week', v: Math.round(avgVolume) + ' (sRPE×min)' },
+        { k: 'Total sessions', v: list.length, cls: 'green' },
+      ])}
+      <h3 class="hist-h3">Weekly Volume &amp; Frequency <span class="muted small">· per ISO week (SGT)</span></h3>
+      ${weeklyTable}
       <h3 class="hist-h3">Session History <span class="muted small">· RPE 1–10</span></h3>
       <div class="table-wrap"><table class="data-table"><thead><tr><th>Date</th><th>Training Type</th><th>RPE</th><th>Duration</th><th>Workload</th></tr></thead>
         <tbody>${list.length ? list.slice().reverse().map((c) => `<tr>
