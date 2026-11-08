@@ -680,3 +680,6 @@ a.ghost { text-decoration: none; display: inline-flex; align-items: center; }
 /* body-mass change direction colours (coach insights + logs) */
 .cell-up { color: var(--green); font-weight: 700; }
 .cell-down { color: var(--red); font-weight: 700; }
+
+/* Emphasise today's hydration goal in the coach insights box */
+.hydration-today-big { margin-top: 6px; font-size: 18px; font-weight: 800; color: var(--blue); }
