@@ -35,12 +35,12 @@ export const CONFIG = {
   // When all these are filled, the app automatically uses Firebase and syncs
   // across every device on the internet in real time. Leave blank to disable.
   FIREBASE: {
-    apiKey: '',
-    authDomain: '',
-    projectId: '',
-    storageBucket: '',
-    messagingSenderId: '',
-    appId: '',
+    apiKey: 'AIzaSyA3guYDEocKWmH49wqdE7wreUaPnUntI5Q',
+    authDomain: 'fyp2026-d31d0.firebaseapp.com',
+    projectId: 'fyp2026-d31d0',
+    storageBucket: 'fyp2026-d31d0.firebasestorage.app',
+    messagingSenderId: '97401221114',
+    appId: '1:97401221114:web:929402d512d7197209fe43',
   },
 };
 
