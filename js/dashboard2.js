@@ -8,16 +8,16 @@ import {
   bpCategory, formatHoursMinutes, formatSgt, sgtDay, sgtWeek, sgtNow,
   hydrationMlForDay, hydrationGoalMl,
   getOverride, exportData, importData, pullState, startSync, isShared, resolveBackend, activeBackend,
-} from './store.js?v=16';
-import { evaluateAthlete, readinessTier, evaluateReadinessStatus, tierMeta } from './alerts.js?v=16';
+} from './store.js?v=17';
+import { evaluateAthlete, readinessTier, evaluateReadinessStatus, tierMeta } from './alerts.js?v=17';
 import {
   srpeChart, painChart, sleepChart, hydrationWeekChart, bpWeekChart, bodyMassWeekChart,
   restqProfileChart, restqBalanceChart, pomsProfileChart, pomsTmdChart,
   tsciChart, smsProfileChart, smsRaiChart, weeklyTrendChart,
-} from './charts.js?v=16';
+} from './charts.js?v=17';
 import {
   QUESTIONNAIRES, scoreRestq, scorePoms, scoreTsci, scoreSms,
-} from './psych.js?v=16';
+} from './psych.js?v=17';
 
 const root = document.getElementById('app');
 // tab: 'physio' | 'psych' ; physioSub: 'daily' | 'training' | 'pain'
@@ -857,10 +857,16 @@ function psychPanel(a) {
 
 /* ------------------------------ Bootstrap ------------------------------- */
 async function boot() {
-  await resolveBackend();
-  if (isShared()) { try { await pullState(); } catch (e) { /* server offline; use local cache */ } }
+  // Paint immediately from the local cache; connect to the backend in the
+  // background. The dashboard is read-only, so re-rendering on new data is safe.
   render();
-  // The dashboard is read-only, so it's always safe to live-refresh on new data.
-  startSync(render);
+  try {
+    await resolveBackend();
+    render(); // reflect the resolved sync badge
+    if (isShared()) {
+      pullState().then((changed) => { if (changed) render(); }).catch(() => {});
+      startSync(render);
+    }
+  } catch (e) { /* stay on local cache */ }
 }
 boot();
