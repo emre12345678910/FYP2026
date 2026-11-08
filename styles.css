@@ -651,3 +651,28 @@ a.ghost { text-decoration: none; display: inline-flex; align-items: center; }
 .chart .line-dark { fill: none; stroke: #93a4b5; stroke-width: 2; }
 .chart .dot-dark { fill: #93a4b5; }
 .chart .goal-line { stroke: var(--text); stroke-width: 1.5; stroke-dasharray: 6 4; opacity: .55; }
+
+/* ===================== Coach interpretation box ========================= */
+.insight-box {
+  background: linear-gradient(180deg, #1c242e, var(--panel));
+  border: 1px solid var(--accent); border-radius: 14px;
+  padding: 18px 22px; margin-bottom: 20px;
+}
+.insight-box h2 { margin: 0 0 14px; font-size: 20px; color: var(--accent); }
+.insight-row {
+  display: grid; grid-template-columns: 170px 1fr; gap: 14px;
+  padding: 12px 0; border-top: 1px solid var(--line); align-items: start;
+}
+.insight-row:first-of-type { border-top: none; }
+.insight-k { font-size: 14px; font-weight: 700; color: var(--text); }
+.insight-v { font-size: 15px; }
+.insight-v .muted.small { margin-top: 3px; }
+.insight-ai {
+  margin-top: 6px; padding: 8px 12px; border-radius: 8px;
+  background: rgba(78,161,255,.1); border-left: 3px solid var(--blue);
+  font-size: 14px; color: var(--text);
+}
+.insight-foot { margin-top: 10px; }
+/* dark-green tier for "excellent sleep" */
+.tier.green-dark { background: rgba(31,138,76,.25); color: #4fe08a; border: 1px solid #1f8a4c; }
+@media (max-width: 640px) { .insight-row { grid-template-columns: 1fr; gap: 4px; } }

@@ -5,18 +5,19 @@
 // Reads from the same localStorage the Athlete Input app writes to.
 import {
   getAthletes, checkinsForAthlete, mentalLogsForAthlete,
-  bpCategory, formatHoursMinutes, formatSgt, sgtDay, sgtWeek,
+  bpCategory, formatHoursMinutes, formatSgt, sgtDay, sgtWeek, sgtNow,
+  hydrationMlForDay, hydrationGoalMl,
   getOverride, exportData, importData, pullState, startSync, isShared, resolveBackend,
-} from './store.js?v=12';
-import { evaluateAthlete, readinessTier, evaluateReadinessStatus, tierMeta } from './alerts.js?v=12';
+} from './store.js?v=13';
+import { evaluateAthlete, readinessTier, evaluateReadinessStatus, tierMeta } from './alerts.js?v=13';
 import {
   srpeChart, painChart, sleepChart,
   restqProfileChart, restqBalanceChart, pomsProfileChart, pomsTmdChart,
   tsciChart, smsProfileChart, smsRaiChart, weeklyTrendChart,
-} from './charts.js?v=12';
+} from './charts.js?v=13';
 import {
   QUESTIONNAIRES, scoreRestq, scorePoms, scoreTsci, scoreSms,
-} from './psych.js?v=12';
+} from './psych.js?v=13';
 
 const root = document.getElementById('app');
 // tab: 'physio' | 'psych' ; physioSub: 'daily' | 'training'
@@ -224,6 +225,106 @@ function avg(items, pick) {
   return vals.length ? vals.reduce((s, v) => s + v, 0) / vals.length : null;
 }
 
+/* ------------------- Coach interpretation helpers ----------------------- */
+// Hydration: hydrated the day BEFORE? + today's % of goal.
+function hydrationInsight(a) {
+  const todayKey = sgtNow().date;
+  const yKey = sgtDay(new Date(Date.now() - 86400000).toISOString());
+  const goal = hydrationGoalMl(a, 0).total; // baseline goal (no exercise bonus)
+  const yMl = hydrationMlForDay(a.id, yKey);
+  const tMl = hydrationMlForDay(a.id, todayKey);
+  const yPct = goal > 0 ? Math.round((yMl / goal) * 100) : 0;
+  const tPct = goal > 0 ? Math.round((tMl / goal) * 100) : 0;
+  const hydrated = yMl >= goal;
+  const dayLabel = yKey.slice(5).replace('-', '/'); // MM/DD -> M/D-ish
+  return {
+    status: hydrated ? 'Hydrated' : 'Dehydrated',
+    cls: hydrated ? 'green' : 'red',
+    yesterday: `${yMl} / ${goal} ml (${yPct}%) on ${dayLabel}`,
+    today: `${tMl} / ${goal} ml — ${tPct}% of goal today`,
+  };
+}
+
+// Sleep interpretation from the most recent overnight sleep.
+function sleepInsight(checkins) {
+  const nights = checkins.filter((c) => c.sleep_type !== 'Nap' && c.sleep_hours != null);
+  if (!nights.length) return null;
+  const h = nights[nights.length - 1].sleep_hours;
+  if (h >= 9) return { label: 'Excellent sleep', cls: 'green-dark', hours: h };
+  if (h >= 7) return { label: 'Sufficient sleep', cls: 'green', hours: h };
+  return { label: 'Underslept', cls: 'red', hours: h };
+}
+
+// Body mass: current + previous (with dates) + an AI-style insight.
+function bodyMassInsight(checkins) {
+  const list = checkins.filter((c) => c.body_mass_kg != null);
+  if (!list.length) return null;
+  const latest = list[list.length - 1];
+  const prev = list.length > 1 ? list[list.length - 2] : null;
+  // Trend over up to the last 5 recordings
+  const recent = list.slice(-5).map((c) => c.body_mass_kg);
+  const spread = Math.max(...recent) - Math.min(...recent);
+  const delta = prev ? latest.body_mass_kg - prev.body_mass_kg : null;
+  const goal = recent.length >= 2 ? recent[0] : null; // naive: earliest in window as a reference
+
+  let insight;
+  if (recent.length < 2) {
+    insight = 'Only one recording so far — more data needed to spot a trend.';
+  } else if (spread <= 1.0) {
+    insight = "Athlete's body mass has been maintained properly over the last few recordings.";
+  } else if (delta != null && Math.abs(delta) >= 1.5) {
+    insight = "Athlete's body mass is noticeably different compared to previous weeks — worth reviewing load & nutrition.";
+  } else if (delta != null && delta < 0) {
+    insight = 'Athlete is trending down and is on track toward a lower target body mass.';
+  } else {
+    insight = "Athlete's body mass is drifting slightly compared to previous weeks.";
+  }
+  return {
+    currentKg: latest.body_mass_kg, currentDate: formatSgt(latest.timestampUtc),
+    prevKg: prev ? prev.body_mass_kg : null, prevDate: prev ? formatSgt(prev.timestampUtc) : null,
+    insight,
+  };
+}
+
+// Blood pressure: latest reading's category.
+function bpInsight(checkins) {
+  const list = checkins.filter((c) => c.bp_systolic != null && c.bp_diastolic != null);
+  if (!list.length) return null;
+  const c = list[list.length - 1];
+  const cat = bpCategory(c.bp_systolic, c.bp_diastolic);
+  return { reading: `${c.bp_systolic}/${c.bp_diastolic} mmHg`, cat };
+}
+
+// The big combined interpretation box for the Daily sub-tab.
+function dailyInsightBox(a, checkins) {
+  const hyd = hydrationInsight(a);
+  const slp = sleepInsight(checkins);
+  const bm = bodyMassInsight(checkins);
+  const bp = bpInsight(checkins);
+
+  const row = (title, inner) => `<div class="insight-row"><div class="insight-k">${title}</div><div class="insight-v">${inner}</div></div>`;
+
+  return `
+  <section class="insight-box">
+    <h2>🧠 Coach Insights <span class="muted small">· ${esc(a.name)}</span></h2>
+    ${row('💧 Hydration', `
+      <span class="tier ${hyd.cls}">${hyd.status}</span>
+      <div class="muted small">Yesterday: ${esc(hyd.yesterday)}</div>
+      <div class="muted small">${esc(hyd.today)}</div>`)}
+    ${row('😴 Sleep', slp
+      ? `<span class="tier ${slp.cls}">${slp.label}</span> <span class="muted small">· ${slp.hours} h latest night</span>`
+      : '<span class="muted">No overnight sleep logged yet.</span>')}
+    ${row('⚖️ Body Mass', bm
+      ? `<strong>${bm.currentKg} kg</strong> <span class="muted small">(${esc(bm.currentDate)})</span>
+         ${bm.prevKg != null ? `<div class="muted small">Previous: ${bm.prevKg} kg (${esc(bm.prevDate)})</div>` : ''}
+         <div class="insight-ai">💡 ${esc(bm.insight)}</div>`
+      : '<span class="muted">No body-mass recordings yet.</span>')}
+    ${row('🩺 Blood Pressure', bp
+      ? `<strong>${esc(bp.reading)}</strong> ${bp.cat ? `<span class="tier ${bp.cat.cls}">${bp.cat.label}</span>` : ''}`
+      : '<span class="muted">No blood-pressure readings yet.</span>')}
+  </section>`;
+}
+
 /* ---- Daily sub-tab: body mass, BP, sleep, hydration, nutrition ---- */
 function dailyPanel(a, checkins) {
   if (!checkins.length) return '<section class="panel"><p class="muted">No daily data yet for this athlete.</p></section>';
@@ -232,6 +333,7 @@ function dailyPanel(a, checkins) {
     .filter((d) => d.hours != null);
 
   return `
+    ${dailyInsightBox(a, checkins)}
     <div class="charts">
       <div class="chart-card">${sleepChart(sleepSeries)}</div>
     </div>
@@ -265,6 +367,63 @@ function bpSection(checkins) {
 }
 
 
+// Pain & Symptoms interpretation for the coach (Training sub-tab).
+const EXTREME_SYMPTOMS = ['Sharp / sudden pain during movement', 'Localised joint swelling', 'Head knock with dizziness / confusion'];
+const SLIGHT_SYMPTOMS = ['General dull muscle tightness / stiffness / fatigue', 'Visible instability'];
+
+function painInsight(checkins) {
+  const painLogs = checkins.filter((c) => c.pain_score != null || (c.pain_symptoms && c.pain_symptoms.length) || c.pain_location);
+  if (!painLogs.length) return null;
+  const latest = painLogs[painLogs.length - 1];
+  const symptoms = latest.pain_symptoms || [];
+  const score = latest.pain_score;
+
+  // Days injured: count distinct SGT days with a pain report in an ongoing run
+  // ending at the latest report (simple: distinct days across all pain logs).
+  const injuredDays = new Set(painLogs.map((c) => c.sgtDay || sgtDay(c.timestampUtc))).size;
+
+  // Severity recommendation from symptoms.
+  const hasExtreme = symptoms.some((s) => EXTREME_SYMPTOMS.includes(s));
+  const hasSlight = symptoms.some((s) => SLIGHT_SYMPTOMS.includes(s));
+  let recommendation, recCls;
+  if (hasExtreme) { recommendation = 'Unable to exercise (extreme injury)'; recCls = 'red'; }
+  else if (hasSlight) { recommendation = 'Light exercise (slight injury)'; recCls = 'yellow'; }
+  else { recommendation = 'No limiting symptoms reported'; recCls = 'green'; }
+
+  // Pain-level descriptor.
+  let painLabel, painCls;
+  if (score == null) { painLabel = '—'; painCls = ''; }
+  else if (score >= 7) { painLabel = 'Severe pain (sharp pain)'; painCls = 'red'; }
+  else if (score >= 4) { painLabel = 'Moderate pain'; painCls = 'yellow'; }
+  else if (score >= 1) { painLabel = 'Slight pain'; painCls = 'yellow'; }
+  else { painLabel = 'No pain'; painCls = 'green'; }
+
+  // If pain >=7, also flag "(sharp pain)" beside the recommendation.
+  const recSuffix = (score != null && score >= 7) ? ' (sharp pain)' : '';
+
+  return {
+    injuredDays, symptoms, score, painLabel, painCls,
+    recommendation: recommendation + recSuffix, recCls,
+    location: latest.pain_location,
+    at: formatSgt(latest.timestampUtc),
+  };
+}
+
+function painInsightBox(checkins) {
+  const p = painInsight(checkins);
+  if (!p) return `<section class="insight-box"><h2>🤕 Pain &amp; Symptoms</h2><p class="muted">No pain or symptoms logged yet.</p></section>`;
+  const row = (title, inner) => `<div class="insight-row"><div class="insight-k">${title}</div><div class="insight-v">${inner}</div></div>`;
+  return `
+  <section class="insight-box">
+    <h2>🤕 Pain &amp; Symptoms</h2>
+    ${row('Days injured', `<strong>${p.injuredDays}</strong> day${p.injuredDays === 1 ? '' : 's'} with a logged pain report`)}
+    ${row('Pain level', `<span class="tier ${p.painCls}">${esc(p.painLabel)}</span>${p.score != null ? ` <span class="muted small">· NPRS ${p.score}/10</span>` : ''}${p.location ? ` <span class="muted small">· ${esc(p.location)}</span>` : ''}`)}
+    ${row('Symptoms', p.symptoms.length ? p.symptoms.map((s) => `<span class="pill">${esc(s)}</span>`).join(' ') : '<span class="muted">none reported</span>')}
+    ${row('Recommendation', `<span class="tier ${p.recCls}">${esc(p.recommendation)}</span>`)}
+    <div class="muted small insight-foot">Latest report: ${esc(p.at)}</div>
+  </section>`;
+}
+
 /* ---- Training sub-tab: training load, pain ---- */
 function trainingPanel(a, checkins) {
   if (!checkins.length) return '<section class="panel"><p class="muted">No training data yet for this athlete.</p></section>';
@@ -288,6 +447,7 @@ function trainingPanel(a, checkins) {
     : '<li class="alert info"><span>🟢</span><div><strong>No active alerts</strong></div></li>';
 
   return `
+    ${painInsightBox(checkins)}
     <div class="detail-cols">
       <div class="charts">
         <div class="chart-card">${srpeChart(painSeries)}</div>
@@ -412,7 +572,25 @@ function physioTrends(a) {
     return vals.length ? vals.reduce((s, v) => s + v, 0) / vals.length : null;
   };
 
+  // Weekly hydration % of goal: average, across the 7 days of that ISO week, of
+  // each day's intake as a % of the athlete's baseline daily goal. Hydration is
+  // stored per-day (not per check-in), so it has its own week-value function.
+  const goalMl = hydrationGoalMl(a, 0).total;
+  const weekHydrationPct = (wk) => {
+    if (goalMl <= 0) return null;
+    const start = new Date(wk.start + 'T00:00:00Z');
+    let sum = 0, n = 0;
+    for (let i = 0; i < 7; i++) {
+      const d = new Date(start.getTime() + i * 86400000);
+      const key = `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}`;
+      const ml = hydrationMlForDay(a.id, key);
+      if (ml > 0) { sum += (ml / goalMl) * 100; n += 1; }
+    }
+    return n ? sum / n : null;
+  };
+
   // One descriptor per physiological metric: how to pull its value + chart it.
+  // Most use `pick` (per-check-in); hydration uses `weekValue` (per-week).
   const MS = [
     { sub: 'pain', label: '🤕 Pain (NPRS)', pick: (c) => c.pain_score, dp: 1,
       opts: { title: 'Pain — NPRS 0–10 (lower is better)', min: 0, max: 10, ref: 3, refLabel: 'watch ≥3', emptyMsg: 'No pain data yet' } },
@@ -422,14 +600,19 @@ function physioTrends(a) {
       opts: { title: 'Overnight sleep — hours (7–10 h recommended)', min: 0, max: 12, ref: 7, refLabel: '7 h', emptyMsg: 'No sleep data yet' } },
     { sub: 'mass', label: '⚖️ Body mass', pick: (c) => c.body_mass_kg, dp: 1,
       opts: { title: 'Body mass — kg', emptyMsg: 'No body-mass data yet' } },
+    { sub: 'hydration', label: '💧 Hydration %', weekValue: weekHydrationPct, dp: 0, unit: '%',
+      opts: { title: 'Hydration — % of daily goal (100% = goal met)', min: 0, max: 150, ref: 100, refLabel: '100% goal', unit: '%', emptyMsg: 'No hydration data yet' } },
   ];
+
+  // Value for a week, from either a per-check-in pick or a per-week function.
+  const metricValue = (wk, m) => (m.weekValue ? m.weekValue(wk) : weekAvg(wk, m.pick));
 
   const subs = [{ sub: 'all', label: '📊 All' }, ...MS.map((m) => ({ sub: m.sub, label: m.label }))];
   const subBar = `<div class="subtabs">${subs.map((s) =>
     `<button class="subtab ${state.trendsPhysioSub === s.sub ? 'active' : ''}" data-tpsub="${s.sub}">${s.label}</button>`).join('')}</div>`;
 
-  const mkSeries = (pick) => weekList.map((wk) => ({ label: wk.label, value: weekAvg(wk, pick) }));
-  const chartCard = (m) => `<div class="chart-card">${weeklyTrendChart(mkSeries(m.pick), m.opts)}</div>`;
+  const mkSeries = (m) => weekList.map((wk) => ({ label: wk.label, value: metricValue(wk, m) }));
+  const chartCard = (m) => `<div class="chart-card">${weeklyTrendChart(mkSeries(m), m.opts)}</div>`;
   const fmt = (v, dp) => (v == null ? '—' : v.toFixed(dp));
 
   const totalsTable = (list) => `
@@ -438,7 +621,7 @@ function physioTrends(a) {
       <tbody>${weekList.slice().reverse().map((wk) => `
         <tr><td>${esc(wk.label)} <span class="muted small">(wk of ${esc(wk.start)})</span></td>
         <td>${wk.items.length}</td>
-        ${list.map((m) => `<td>${fmt(weekAvg(wk, m.pick), m.dp)}${m.opts.unit === '%' && weekAvg(wk, m.pick) != null ? '%' : ''}</td>`).join('')}</tr>`).join('')}
+        ${list.map((m) => { const v = metricValue(wk, m); return `<td>${fmt(v, m.dp)}${m.unit === '%' && v != null ? '%' : ''}</td>`; }).join('')}</tr>`).join('')}
       </tbody></table></div>`;
 
   let body;
