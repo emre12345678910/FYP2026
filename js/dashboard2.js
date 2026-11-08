@@ -8,16 +8,16 @@ import {
   bpCategory, formatHoursMinutes, formatSgt, sgtDay, sgtWeek, sgtNow,
   hydrationMlForDay, hydrationGoalMl,
   getOverride, exportData, importData, pullState, startSync, isShared, resolveBackend,
-} from './store.js?v=14';
-import { evaluateAthlete, readinessTier, evaluateReadinessStatus, tierMeta } from './alerts.js?v=14';
+} from './store.js?v=15';
+import { evaluateAthlete, readinessTier, evaluateReadinessStatus, tierMeta } from './alerts.js?v=15';
 import {
   srpeChart, painChart, sleepChart, hydrationWeekChart, bpWeekChart, bodyMassWeekChart,
   restqProfileChart, restqBalanceChart, pomsProfileChart, pomsTmdChart,
   tsciChart, smsProfileChart, smsRaiChart, weeklyTrendChart,
-} from './charts.js?v=14';
+} from './charts.js?v=15';
 import {
   QUESTIONNAIRES, scoreRestq, scorePoms, scoreTsci, scoreSms,
-} from './psych.js?v=14';
+} from './psych.js?v=15';
 
 const root = document.getElementById('app');
 // tab: 'physio' | 'psych' ; physioSub: 'daily' | 'training' | 'pain'
@@ -326,7 +326,7 @@ function dailyInsightBox(a, checkins) {
     ${row('💧 Hydration', `
       <div><strong>${esc(hyd.dayLabel)}</strong> — <span class="tier ${hyd.cls}">${hyd.status}</span></div>
       <div class="muted small">That day: ${esc(hyd.yesterdayDetail)}</div>
-      <div class="muted small">${esc(hyd.today)}</div>`)}
+      <div class="hydration-today-big">Today: ${esc(hyd.today)}</div>`)}
     ${row('😴 Sleep', slp
       ? `<span class="tier ${slp.cls}">${slp.label}</span> <span class="muted small">· ${slp.hours} h latest night</span>`
       : '<span class="muted">No overnight sleep logged yet.</span>')}
