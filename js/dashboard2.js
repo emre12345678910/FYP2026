@@ -7,17 +7,17 @@ import {
   getAthletes, checkinsForAthlete, mentalLogsForAthlete,
   bpCategory, formatHoursMinutes, formatSgt, sgtDay, sgtWeek, sgtNow,
   hydrationMlForDay, hydrationGoalMl,
-  getOverride, exportData, importData, pullState, startSync, isShared, resolveBackend,
-} from './store.js?v=15';
-import { evaluateAthlete, readinessTier, evaluateReadinessStatus, tierMeta } from './alerts.js?v=15';
+  getOverride, exportData, importData, pullState, startSync, isShared, resolveBackend, activeBackend,
+} from './store.js?v=16';
+import { evaluateAthlete, readinessTier, evaluateReadinessStatus, tierMeta } from './alerts.js?v=16';
 import {
   srpeChart, painChart, sleepChart, hydrationWeekChart, bpWeekChart, bodyMassWeekChart,
   restqProfileChart, restqBalanceChart, pomsProfileChart, pomsTmdChart,
   tsciChart, smsProfileChart, smsRaiChart, weeklyTrendChart,
-} from './charts.js?v=15';
+} from './charts.js?v=16';
 import {
   QUESTIONNAIRES, scoreRestq, scorePoms, scoreTsci, scoreSms,
-} from './psych.js?v=15';
+} from './psych.js?v=16';
 
 const root = document.getElementById('app');
 // tab: 'physio' | 'psych' ; physioSub: 'daily' | 'training' | 'pain'
@@ -29,6 +29,12 @@ let state = {
 };
 
 function athleteById(id) { return getAthletes().find((a) => a.id === id); }
+function syncBadge() {
+  const b = activeBackend();
+  if (b === 'firebase') return '<span class="sync-badge on">☁ Cloud sync on</span>';
+  if (b === 'server') return '<span class="sync-badge on">🖧 LAN sync on</span>';
+  return '<span class="sync-badge off">📴 This device only</span>';
+}
 function esc(s) {
   return String(s ?? '').replace(/[&<>"']/g, (c) =>
     ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -65,7 +71,7 @@ function render() {
         <button class="tab ${state.tab === 'psych' ? 'active' : ''}" data-tab="psych">🧠 Psychological</button>
         <button class="tab ${state.tab === 'trends' ? 'active' : ''}" data-tab="trends">📈 Weekly Trends</button>
       </nav>
-      <div class="tz">🕒 SGT (UTC+8)</div>
+      <div class="tz">🕒 SGT (UTC+8) · ${syncBadge()}</div>
       <div class="data-actions">
         <button class="ghost" id="export-data" title="Download all data as a file">⬇ Export</button>
         <button class="ghost" id="import-data" title="Load data from an exported file">⬆ Import</button>
