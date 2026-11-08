@@ -110,12 +110,7 @@ export async function pullState() {
     const res = await fetch(serverBase() + '/api/state', { cache: 'no-store' });
     if (!res.ok) throw new Error('server ' + res.status);
     const state = await res.json();
-    let changed = false;
-    for (const key of Object.values(KEYS)) {
-      const incoming = JSON.stringify(state[key] ?? (key === KEYS.overrides || key === KEYS.hydration ? {} : []));
-      if (localStorage.getItem(key) !== incoming) { localStorage.setItem(key, incoming); changed = true; }
-    }
-    return changed;
+    return applyMergedState(state);
   }
   if (backend === 'firebase') return pullStateFirebase();
   return false; // 'local'
@@ -184,14 +179,39 @@ async function initFirebase() {
   return _fb;
 }
 
-// Writes a Firestore snapshot's fields into localStorage. Returns true if
-// anything changed locally.
-function applyFirebaseData(data) {
+// Merge helpers so two devices don't overwrite each other. Record arrays
+// (athletes/checkins/mental) merge by `id` (union); object maps
+// (overrides/hydration) merge by key. Cloud values win on conflict.
+function mergeById(localArr, cloudArr) {
+  const byId = new Map();
+  for (const r of (localArr || [])) if (r && r.id != null) byId.set(r.id, r);
+  for (const r of (cloudArr || [])) if (r && r.id != null) byId.set(r.id, r); // cloud overrides
+  return [...byId.values()];
+}
+function mergeMap(localObj, cloudObj) { return { ...(localObj || {}), ...(cloudObj || {}) }; }
+function readLocal(key, fallback) {
+  const raw = localStorage.getItem(key);
+  if (raw == null) return fallback;
+  try { return JSON.parse(raw); } catch { return fallback; }
+}
+
+// Writes a shared-state object's fields into localStorage, MERGING with
+// whatever is already local so nothing is lost. Used by both backends.
+// Returns true if anything changed.
+function applyMergedState(data) {
+  data = data || {};
   let changed = false;
-  for (const key of Object.values(KEYS)) {
-    const fallback = (key === KEYS.overrides || key === KEYS.hydration) ? {} : [];
-    const incoming = JSON.stringify((data && data[key]) ?? fallback);
-    if (localStorage.getItem(key) !== incoming) { localStorage.setItem(key, incoming); changed = true; }
+  const arrayKeys = [KEYS.athletes, KEYS.checkins, KEYS.mental];
+  const mapKeys = [KEYS.overrides, KEYS.hydration];
+  for (const key of arrayKeys) {
+    const merged = mergeById(readLocal(key, []), data[key] || []);
+    const text = JSON.stringify(merged);
+    if (localStorage.getItem(key) !== text) { localStorage.setItem(key, text); changed = true; }
+  }
+  for (const key of mapKeys) {
+    const merged = mergeMap(readLocal(key, {}), data[key] || {});
+    const text = JSON.stringify(merged);
+    if (localStorage.getItem(key) !== text) { localStorage.setItem(key, text); changed = true; }
   }
   return changed;
 }
@@ -199,16 +219,26 @@ function applyFirebaseData(data) {
 async function pullStateFirebase() {
   const fb = await initFirebase();
   const snap = await fb.getDoc(fb.ref);
-  return applyFirebaseData(snap.exists() ? snap.data() : {});
+  return applyMergedState(snap.exists() ? snap.data() : {});
 }
 
-// Firestore field names can't contain '/', but our KEYS don't — they're safe.
+// Pushes one key up. For record arrays/maps we first read the current cloud
+// value and MERGE, so a device that hasn't fully synced can't wipe records
+// another device added.
 async function pushKeyFirebase(key, value) {
   const fb = await initFirebase();
-  // value is JSON text; store the parsed object so Firestore holds real JSON.
   let parsed;
   try { parsed = JSON.parse(value); } catch { parsed = value; }
-  // merge:true so each key updates independently without clobbering the others.
+  const arrayKeys = [KEYS.athletes, KEYS.checkins, KEYS.mental];
+  const mapKeys = [KEYS.overrides, KEYS.hydration];
+  if (arrayKeys.includes(key) || mapKeys.includes(key)) {
+    try {
+      const snap = await fb.getDoc(fb.ref);
+      const cloud = snap.exists() ? snap.data()[key] : undefined;
+      if (arrayKeys.includes(key)) parsed = mergeById(cloud || [], parsed || []);
+      else parsed = mergeMap(cloud || {}, parsed || {});
+    } catch { /* if the read fails, write local value as-is */ }
+  }
   await fb.setDoc(fb.ref, { [key]: parsed, _updatedAt: Date.now() }, { merge: true });
 }
 
@@ -217,7 +247,7 @@ function startSyncFirebase(onChange) {
   let stop = () => {};
   initFirebase().then((fb) => {
     stop = fb.onSnapshot(fb.ref, (snap) => {
-      const changed = applyFirebaseData(snap.exists() ? snap.data() : {});
+      const changed = applyMergedState(snap.exists() ? snap.data() : {});
       if (changed && onChange) onChange();
     }, (err) => console.warn('Firebase onSnapshot error:', err && err.message));
   }).catch((e) => console.warn('Firebase sync not started:', e.message));
