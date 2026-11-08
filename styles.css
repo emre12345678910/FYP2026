@@ -676,3 +676,7 @@ a.ghost { text-decoration: none; display: inline-flex; align-items: center; }
 /* dark-green tier for "excellent sleep" */
 .tier.green-dark { background: rgba(31,138,76,.25); color: #4fe08a; border: 1px solid #1f8a4c; }
 @media (max-width: 640px) { .insight-row { grid-template-columns: 1fr; gap: 4px; } }
+
+/* body-mass change direction colours (coach insights + logs) */
+.cell-up { color: var(--green); font-weight: 700; }
+.cell-down { color: var(--red); font-weight: 700; }
