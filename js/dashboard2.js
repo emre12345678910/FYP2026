@@ -1,6 +1,6 @@
 // dashboard.js — Coach DASHBOARD (output only, read-only).
 // Tabs:
-//   🫀 Physiological  → sub-tabs: Daily · Training
+//   🫀 Physiological  → sub-tabs: Daily · Training · Pain & Symptoms
 //   🧠 Psychological  → RESTQ / POMS / TSCI / SMS-II scored results & charts
 // Reads from the same localStorage the Athlete Input app writes to.
 import {
@@ -8,19 +8,19 @@ import {
   bpCategory, formatHoursMinutes, formatSgt, sgtDay, sgtWeek, sgtNow,
   hydrationMlForDay, hydrationGoalMl,
   getOverride, exportData, importData, pullState, startSync, isShared, resolveBackend,
-} from './store.js?v=13';
-import { evaluateAthlete, readinessTier, evaluateReadinessStatus, tierMeta } from './alerts.js?v=13';
+} from './store.js?v=14';
+import { evaluateAthlete, readinessTier, evaluateReadinessStatus, tierMeta } from './alerts.js?v=14';
 import {
-  srpeChart, painChart, sleepChart,
+  srpeChart, painChart, sleepChart, hydrationWeekChart, bpWeekChart, bodyMassWeekChart,
   restqProfileChart, restqBalanceChart, pomsProfileChart, pomsTmdChart,
   tsciChart, smsProfileChart, smsRaiChart, weeklyTrendChart,
-} from './charts.js?v=13';
+} from './charts.js?v=14';
 import {
   QUESTIONNAIRES, scoreRestq, scorePoms, scoreTsci, scoreSms,
-} from './psych.js?v=13';
+} from './psych.js?v=14';
 
 const root = document.getElementById('app');
-// tab: 'physio' | 'psych' ; physioSub: 'daily' | 'training'
+// tab: 'physio' | 'psych' ; physioSub: 'daily' | 'training' | 'pain'
 let state = {
   tab: 'physio', physioSub: 'daily',
   // Weekly Trends: category (psych | physio) + a per-metric sub-tab for each.
@@ -206,8 +206,22 @@ function physioPanel(a, checkins) {
     <div class="subtabs">
       <button class="subtab ${state.physioSub === 'daily' ? 'active' : ''}" data-sub="daily">📅 Daily</button>
       <button class="subtab ${state.physioSub === 'training' ? 'active' : ''}" data-sub="training">🔥 Training</button>
+      <button class="subtab ${state.physioSub === 'pain' ? 'active' : ''}" data-sub="pain">🤕 Pain &amp; Symptoms</button>
     </div>`;
-  return subBar + (state.physioSub === 'daily' ? dailyPanel(a, checkins) : trainingPanel(a, checkins));
+  const panel = state.physioSub === 'training' ? trainingPanel(a, checkins)
+    : state.physioSub === 'pain' ? painPanel(a, checkins)
+    : dailyPanel(a, checkins);
+  return subBar + panel;
+}
+
+// A reusable "aspect" block: a weekly/daily chart card + a log table, matching
+// the athlete-side History style (chart on top, log below).
+function aspectSection(title, chartHtml, tableHtml) {
+  return `<section class="panel">
+    <h3>${title}</h3>
+    <div class="hist-chart">${chartHtml}</div>
+    ${tableHtml}
+  </section>`;
 }
 
 // Per-SGT-day grouping + averaging (for day-over-day charts).
@@ -240,7 +254,8 @@ function hydrationInsight(a) {
   return {
     status: hydrated ? 'Hydrated' : 'Dehydrated',
     cls: hydrated ? 'green' : 'red',
-    yesterday: `${yMl} / ${goal} ml (${yPct}%) on ${dayLabel}`,
+    dayLabel,                       // the date the status refers to
+    yesterdayDetail: `${yMl} / ${goal} ml (${yPct}%)`,
     today: `${tMl} / ${goal} ml — ${tPct}% of goal today`,
   };
 }
@@ -279,10 +294,11 @@ function bodyMassInsight(checkins) {
   } else {
     insight = "Athlete's body mass is drifting slightly compared to previous weeks.";
   }
+  const diffPct = (prev && prev.body_mass_kg) ? (delta / prev.body_mass_kg) * 100 : null;
   return {
     currentKg: latest.body_mass_kg, currentDate: formatSgt(latest.timestampUtc),
     prevKg: prev ? prev.body_mass_kg : null, prevDate: prev ? formatSgt(prev.timestampUtc) : null,
-    insight,
+    delta, diffPct, insight,
   };
 }
 
@@ -308,8 +324,8 @@ function dailyInsightBox(a, checkins) {
   <section class="insight-box">
     <h2>🧠 Coach Insights <span class="muted small">· ${esc(a.name)}</span></h2>
     ${row('💧 Hydration', `
-      <span class="tier ${hyd.cls}">${hyd.status}</span>
-      <div class="muted small">Yesterday: ${esc(hyd.yesterday)}</div>
+      <div><strong>${esc(hyd.dayLabel)}</strong> — <span class="tier ${hyd.cls}">${hyd.status}</span></div>
+      <div class="muted small">That day: ${esc(hyd.yesterdayDetail)}</div>
       <div class="muted small">${esc(hyd.today)}</div>`)}
     ${row('😴 Sleep', slp
       ? `<span class="tier ${slp.cls}">${slp.label}</span> <span class="muted small">· ${slp.hours} h latest night</span>`
@@ -317,6 +333,7 @@ function dailyInsightBox(a, checkins) {
     ${row('⚖️ Body Mass', bm
       ? `<strong>${bm.currentKg} kg</strong> <span class="muted small">(${esc(bm.currentDate)})</span>
          ${bm.prevKg != null ? `<div class="muted small">Previous: ${bm.prevKg} kg (${esc(bm.prevDate)})</div>` : ''}
+         ${bm.delta != null ? `<div>Change vs previous: <strong class="${bm.delta > 0 ? 'cell-up' : bm.delta < 0 ? 'cell-down' : ''}">${bm.delta > 0 ? '+' : ''}${bm.delta.toFixed(1)} kg${bm.diffPct != null ? ` (${bm.diffPct > 0 ? '+' : ''}${bm.diffPct.toFixed(1)}%)` : ''}</strong></div>` : ''}
          <div class="insight-ai">💡 ${esc(bm.insight)}</div>`
       : '<span class="muted">No body-mass recordings yet.</span>')}
     ${row('🩺 Blood Pressure', bp
@@ -327,47 +344,87 @@ function dailyInsightBox(a, checkins) {
 
 /* ---- Daily sub-tab: body mass, BP, sleep, hydration, nutrition ---- */
 function dailyPanel(a, checkins) {
-  if (!checkins.length) return '<section class="panel"><p class="muted">No daily data yet for this athlete.</p></section>';
+  if (!checkins.length) return `${dailyInsightBox(a, checkins)}<section class="panel"><p class="muted">No daily data yet for this athlete.</p></section>`;
   const days = groupByDay(checkins);
-  const sleepSeries = days.map((d) => ({ label: d.label, hours: avg(d.items.filter((c) => c.sleep_type !== 'Nap'), (c) => c.sleep_hours) }))
-    .filter((d) => d.hours != null);
+
+  // --- series for each daily aspect ---
+  const sleepSeries = days.map((d) => ({ label: d.label, hours: avg(d.items.filter((c) => c.sleep_type !== 'Nap'), (c) => c.sleep_hours) })).filter((d) => d.hours != null);
+  const bmSeries = days.map((d) => ({ label: d.label, kg: avg(d.items, (c) => c.body_mass_kg) })).filter((d) => d.kg != null);
+  const bpDays = days.map((d) => ({ label: d.label, sys: avg(d.items, (c) => c.bp_systolic), dia: avg(d.items, (c) => c.bp_diastolic) })).filter((d) => d.sys != null && d.dia != null);
+  // Hydration is per-day in its own store — build a weekly series like the athlete history.
+  const goalMl = hydrationGoalMl(a, 0).total;
+  const last7 = last7Days().map((d) => ({ label: d.label, ml: hydrationMlForDay(a.id, d.key) }));
 
   return `
     ${dailyInsightBox(a, checkins)}
-    <div class="charts">
-      <div class="chart-card">${sleepChart(sleepSeries)}</div>
-    </div>
-    ${bodyMassSection(checkins)}
-    ${bpSection(checkins)}`;
+    ${aspectSection('💧 Hydration', hydrationWeekChart(last7, goalMl), hydrationLogTable(a))}
+    ${aspectSection('⚖️ Body Mass', bodyMassWeekChart(bmSeries), bodyMassLogTable(checkins))}
+    ${aspectSection('🩺 Blood Pressure', bpWeekChart(bpDays), bpLogTable(checkins))}
+    ${aspectSection('😴 Sleep', sleepChart(sleepSeries), sleepLogTable(checkins))}`;
 }
 
-function bodyMassSection(checkins) {
+// 7 SGT days ending today (for hydration weekly series).
+function last7Days() {
+  const out = [];
+  const now = new Date();
+  for (let i = 6; i >= 0; i--) {
+    const d = new Date(now.getTime() - i * 86400000);
+    const key = sgtDay(d.toISOString());
+    out.push({ key, label: key.slice(5) });
+  }
+  return out;
+}
+
+function hydrationLogTable(a) {
+  const goalMl = hydrationGoalMl(a, 0).total;
+  const rows = last7Days().slice().reverse().map((d) => {
+    const ml = hydrationMlForDay(a.id, d.key);
+    const pct = goalMl > 0 ? Math.round((ml / goalMl) * 100) : 0;
+    const ok = ml >= goalMl;
+    return `<tr><td>${esc(d.label)}</td><td>${(ml / 1000).toFixed(1)} L</td><td>${pct}%</td>
+      <td><span class="tier ${ok ? 'green' : 'red'}">${ok ? 'Hydrated' : 'Dehydrated'}</span></td></tr>`;
+  }).join('');
+  return `<div class="table-wrap"><table class="data-table"><thead><tr><th>Day</th><th>Intake</th><th>% of goal</th><th>Status</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+}
+
+function sleepLogTable(checkins) {
+  const nights = checkins.filter((c) => c.sleep_type !== 'Nap' && c.sleep_hours != null).slice().reverse();
+  if (!nights.length) return '<p class="muted">No overnight sleep logged yet.</p>';
+  const rows = nights.map((c) => {
+    const h = c.sleep_hours;
+    const tier = h >= 9 ? ['green-dark', 'Excellent'] : h >= 7 ? ['green', 'Sufficient'] : ['red', 'Underslept'];
+    return `<tr><td>${esc(formatSgt(c.timestampUtc))}</td><td>${c.sleep_start && c.sleep_end ? esc(c.sleep_start + '–' + c.sleep_end) : '—'}</td>
+      <td>${c.sleep_minutes != null ? formatHoursMinutes(c.sleep_minutes) : h + ' h'}</td><td><span class="tier ${tier[0]}">${tier[1]}</span></td></tr>`;
+  }).join('');
+  return `<div class="table-wrap"><table class="data-table"><thead><tr><th>Time (SGT)</th><th>Window</th><th>Duration</th><th>Status</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+}
+
+// Log-table helpers (shared, no <section> wrapper — used inside aspectSection).
+function bodyMassLogTable(checkins) {
   const list = checkins.filter((c) => c.body_mass_kg != null).slice().reverse();
+  if (!list.length) return '<p class="muted">No body-mass recordings yet.</p>';
   const rows = list.map((c, i) => {
     const prev = list[i + 1];
     const delta = prev && prev.body_mass_kg != null ? c.body_mass_kg - prev.body_mass_kg : null;
-    const deltaStr = delta == null ? '—' : (delta === 0 ? '±0' : (delta > 0 ? '+' : '') + delta.toFixed(1)) + ' kg';
-    return `<tr><td>${esc(formatSgt(c.timestampUtc))}</td><td>${c.body_mass_kg} kg</td><td class="${delta != null && delta < 0 ? 'cell-yellow' : ''}">${deltaStr}</td></tr>`;
+    const pct = (delta != null && prev.body_mass_kg) ? (delta / prev.body_mass_kg) * 100 : null;
+    const deltaStr = delta == null ? '—' : `${delta > 0 ? '+' : ''}${delta.toFixed(1)} kg${pct != null ? ` (${pct > 0 ? '+' : ''}${pct.toFixed(1)}%)` : ''}`;
+    return `<tr><td>${esc(formatSgt(c.timestampUtc))}</td><td>${c.body_mass_kg} kg</td><td class="${delta != null && delta < 0 ? 'cell-down' : delta > 0 ? 'cell-up' : ''}">${deltaStr}</td></tr>`;
   }).join('');
-  return `<section class="panel"><h3>⚖️ Body Mass log</h3>${list.length
-    ? `<div class="table-wrap"><table class="data-table"><thead><tr><th>Time (SGT)</th><th>Body mass</th><th>Δ vs prev</th></tr></thead><tbody>${rows}</tbody></table></div>`
-    : '<p class="muted">No body-mass recordings yet.</p>'}</section>`;
+  return `<div class="table-wrap"><table class="data-table"><thead><tr><th>Time (SGT)</th><th>Body mass</th><th>Δ vs prev (kg / %)</th></tr></thead><tbody>${rows}</tbody></table></div>`;
 }
 
-function bpSection(checkins) {
+function bpLogTable(checkins) {
   const list = checkins.filter((c) => c.bp_systolic != null && c.bp_diastolic != null).slice().reverse();
+  if (!list.length) return '<p class="muted">No blood-pressure readings yet.</p>';
   const rows = list.map((c) => {
     const cat = bpCategory(c.bp_systolic, c.bp_diastolic);
     return `<tr><td>${esc(formatSgt(c.timestampUtc))}</td><td>${c.bp_timing ? `<span class="pill">${esc(c.bp_timing)}</span>` : '—'}</td>
       <td>${c.bp_systolic}/${c.bp_diastolic} mmHg</td><td>${cat ? `<span class="tier ${cat.cls}">${cat.label}</span>` : '—'}</td></tr>`;
   }).join('');
-  return `<section class="panel"><h3>🩺 Blood Pressure log</h3>${list.length
-    ? `<div class="table-wrap"><table class="data-table"><thead><tr><th>Time (SGT)</th><th>Timing</th><th>Reading</th><th>Category</th></tr></thead><tbody>${rows}</tbody></table></div>`
-    : '<p class="muted">No blood-pressure readings yet.</p>'}</section>`;
+  return `<div class="table-wrap"><table class="data-table"><thead><tr><th>Time (SGT)</th><th>Timing</th><th>Reading</th><th>Category</th></tr></thead><tbody>${rows}</tbody></table></div>`;
 }
 
-
-// Pain & Symptoms interpretation for the coach (Training sub-tab).
+// Pain & Symptoms interpretation for the coach.
 const EXTREME_SYMPTOMS = ['Sharp / sudden pain during movement', 'Localised joint swelling', 'Head knock with dizziness / confusion'];
 const SLIGHT_SYMPTOMS = ['General dull muscle tightness / stiffness / fatigue', 'Visible instability'];
 
@@ -424,21 +481,93 @@ function painInsightBox(checkins) {
   </section>`;
 }
 
-/* ---- Training sub-tab: training load, pain ---- */
-function trainingPanel(a, checkins) {
-  if (!checkins.length) return '<section class="panel"><p class="muted">No training data yet for this athlete.</p></section>';
+/* ---- Pain & Symptoms sub-tab ---- */
+function painPanel(a, checkins) {
   const days = groupByDay(checkins);
-  const painSeries = days.map((d) => ({ label: d.label, srpe: avg(d.items, (c) => c.srpe), pain: avg(d.items, (c) => c.pain_score) })).filter((d) => d.srpe != null || d.pain != null);
+  const painSeries = days.map((d) => ({ label: d.label, pain: avg(d.items, (c) => c.pain_score) })).filter((d) => d.pain != null);
+  const painLogs = checkins.filter((c) => c.pain_score != null || (c.pain_symptoms && c.pain_symptoms.length) || c.pain_location).slice().reverse();
+  const logTable = painLogs.length ? `
+    <div class="table-wrap"><table class="data-table"><thead><tr><th>Date</th><th>Pain</th><th>Location</th><th>Period</th><th>Symptoms</th><th>Actions</th></tr></thead>
+      <tbody>${painLogs.map((c) => `<tr>
+        <td>${esc(formatSgt(c.timestampUtc))}</td>
+        <td class="${c.pain_score != null && c.pain_score >= 6 ? 'cell-red' : ''}">${c.pain_score ?? '—'}</td>
+        <td>${esc(c.pain_location || '—')}</td><td>${esc(c.pain_period || '—')}</td>
+        <td>${(c.pain_symptoms || []).map((s) => `<span class="pill">${esc(s)}</span>`).join(' ') || '—'}</td>
+        <td>${esc(c.pain_actions || '—')}</td></tr>`).join('')}</tbody></table></div>`
+    : '<p class="muted">No pain or symptoms logged yet.</p>';
+  return `
+    ${painInsightBox(checkins)}
+    ${aspectSection('🤕 Pain trend (NPRS per day)', painChart(painSeries), logTable)}`;
+}
 
-  const rawRows = checkins.filter((c) => c.srpe != null || c.pain_score != null)
+// AI-style interpretation of how hard the most recent training was for the athlete.
+function trainingInsight(checkins) {
+  const sessions = checkins.filter((c) => c.srpe != null || c.duration_mins != null || c.intensity_level);
+  if (!sessions.length) return null;
+  const c = sessions[sessions.length - 1];
+  const srpe = c.srpe, dur = c.duration_mins, load = c.workload, type = c.intensity_level;
+
+  // Difficulty bucket from sRPE (session RPE 1–10).
+  let difficulty, dCls;
+  if (srpe == null) { difficulty = 'Not rated'; dCls = ''; }
+  else if (srpe >= 9) { difficulty = 'Maximal / very hard'; dCls = 'red'; }
+  else if (srpe >= 7) { difficulty = 'Hard'; dCls = 'red'; }
+  else if (srpe >= 5) { difficulty = 'Moderate'; dCls = 'yellow'; }
+  else if (srpe >= 3) { difficulty = 'Light'; dCls = 'green'; }
+  else { difficulty = 'Very easy / recovery'; dCls = 'green'; }
+
+  // A plain-language description combining type, RPE, duration and workload,
+  // benchmarked against the athlete's own recent average workload.
+  const recentLoads = sessions.map((s) => s.workload).filter((v) => v != null);
+  const avgLoad = recentLoads.length ? recentLoads.reduce((s, v) => s + v, 0) / recentLoads.length : null;
+  let vsAvg = '';
+  if (load != null && avgLoad) {
+    const ratio = load / avgLoad;
+    vsAvg = ratio >= 1.3 ? ' — a notably bigger load than their recent average'
+      : ratio <= 0.7 ? ' — a lighter load than their recent average'
+      : ' — in line with their recent average load';
+  }
+  const parts = [];
+  if (type) parts.push(`${type} session`);
+  if (dur != null) parts.push(`${dur} min`);
+  if (srpe != null) parts.push(`RPE ${srpe}/10`);
+  if (load != null) parts.push(`workload ${load} (sRPE×min)`);
+  const describe = parts.length ? parts.join(' · ') : 'session logged';
+
+  const narrative = srpe == null
+    ? `Logged a ${type || 'training'} session${dur != null ? ` of ${dur} min` : ''}, but no RPE was given, so perceived difficulty is unknown.`
+    : `This was a ${difficulty.toLowerCase()} session for the athlete (RPE ${srpe}/10)${dur != null ? ` lasting ${dur} min` : ''}${load != null ? `, giving a training load of ${load}${vsAvg}` : ''}.`;
+
+  return { difficulty, dCls, describe, narrative, at: formatSgt(c.timestampUtc) };
+}
+
+function trainingInsightBox(checkins) {
+  const t = trainingInsight(checkins);
+  if (!t) return `<section class="insight-box"><h2>🔥 Training Load</h2><p class="muted">No training sessions logged yet.</p></section>`;
+  const row = (title, inner) => `<div class="insight-row"><div class="insight-k">${title}</div><div class="insight-v">${inner}</div></div>`;
+  return `
+  <section class="insight-box">
+    <h2>🔥 Training Load</h2>
+    ${row('Difficulty', `<span class="tier ${t.dCls}">${esc(t.difficulty)}</span>`)}
+    ${row('Session', `<strong>${esc(t.describe)}</strong>`)}
+    ${row('Interpretation', `<div class="insight-ai">💡 ${esc(t.narrative)}</div>`)}
+    <div class="muted small insight-foot">Latest session: ${esc(t.at)}</div>
+  </section>`;
+}
+
+/* ---- Training sub-tab: training load ---- */
+function trainingPanel(a, checkins) {
+  if (!checkins.length) return `${trainingInsightBox(checkins)}<section class="panel"><p class="muted">No training data yet for this athlete.</p></section>`;
+  const days = groupByDay(checkins);
+  const srpeSeries = days.map((d) => ({ label: d.label, srpe: avg(d.items, (c) => c.srpe) })).filter((d) => d.srpe != null);
+
+  const rawRows = checkins.filter((c) => c.srpe != null || c.intensity_level || c.duration_mins != null)
     .slice().reverse().map((c) => `<tr>
         <td>${esc(formatSgt(c.timestampUtc))}</td>
         <td>${esc(c.intensity_level || '—')}</td>
         <td>${c.srpe ?? '—'}</td>
         <td>${c.duration_mins ?? '—'}</td>
         <td>${c.workload ?? '—'}</td>
-        <td class="${c.pain_score != null && c.pain_score >= 6 ? 'cell-red' : ''}">${c.pain_score ?? '—'}</td>
-        <td>${esc(c.pain_location || '—')}${(c.pain_symptoms && c.pain_symptoms.length) ? ` <span class="pill" title="${esc(c.pain_symptoms.join('; '))}">${c.pain_symptoms.length} symptom${c.pain_symptoms.length === 1 ? '' : 's'}</span>` : ''}</td>
       </tr>`).join('');
 
   const alerts = evaluateAthlete(a, checkins);
@@ -447,18 +576,17 @@ function trainingPanel(a, checkins) {
     : '<li class="alert info"><span>🟢</span><div><strong>No active alerts</strong></div></li>';
 
   return `
-    ${painInsightBox(checkins)}
+    ${trainingInsightBox(checkins)}
     <div class="detail-cols">
       <div class="charts">
-        <div class="chart-card">${srpeChart(painSeries)}</div>
-        <div class="chart-card">${painChart(painSeries)}</div>
+        <div class="chart-card">${srpeChart(srpeSeries)}</div>
       </div>
       <aside class="alerts-pane"><h3>🔔 Notifications &amp; Alerts</h3><ul class="alert-list">${alertList}</ul></aside>
     </div>
     <section class="panel"><h3>Training sessions — raw metrics</h3>
       <div class="table-wrap"><table class="data-table"><thead><tr>
-        <th>SGT</th><th>Intensity</th><th>sRPE</th><th>Dur</th><th>Workload</th><th>Pain</th><th>Location</th>
-      </tr></thead><tbody>${rawRows || '<tr><td colspan="7" class="muted">No training data</td></tr>'}</tbody></table></div>
+        <th>SGT</th><th>Intensity</th><th>sRPE</th><th>Dur</th><th>Workload</th>
+      </tr></thead><tbody>${rawRows || '<tr><td colspan="5" class="muted">No training data</td></tr>'}</tbody></table></div>
     </section>`;
 }
 
