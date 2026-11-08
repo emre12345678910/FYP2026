@@ -10,17 +10,24 @@ import {
   bpCategory, sleepHoursBetween, sleepMinutesBetween, formatHoursMinutes, formatSgt, sgtDay, sgtWeek,
   getHydrationToday, addBottle, removeBottle, DEFAULT_BOTTLE_ML,
   hydrationGoalMl, exerciseMinutesToday,
-  exportData, importData, pullState, startSync, isShared, resolveBackend,
+  exportData, importData, pullState, startSync, isShared, resolveBackend, activeBackend,
   BP_TIMINGS, INTENSITY_LEVELS, PAIN_SYMPTOMS,
-} from './store.js?v=15';
-import { QUESTIONNAIRES, itemId } from './psych.js?v=15';
-import { hydrationWeekChart, bpWeekChart, bodyMassWeekChart, sleepChart } from './charts.js?v=15';
+} from './store.js?v=16';
+import { QUESTIONNAIRES, itemId } from './psych.js?v=16';
+import { hydrationWeekChart, bpWeekChart, bodyMassWeekChart, sleepChart } from './charts.js?v=16';
 
 const root = document.getElementById('app');
 // section = top-level ('physio' | 'mental'); physioSub = 'daily' | 'training'
 let state = { section: 'physio', physioSub: 'daily', selectedAthlete: null };
 
 function athleteById(id) { return getAthletes().find((a) => a.id === id); }
+// A small badge showing whether cloud sync is active.
+function syncBadge() {
+  const b = activeBackend();
+  if (b === 'firebase') return '<span class="sync-badge on">☁ Cloud sync on</span>';
+  if (b === 'server') return '<span class="sync-badge on">🖧 LAN sync on</span>';
+  return '<span class="sync-badge off">📴 This device only</span>';
+}
 function esc(s) {
   return String(s ?? '').replace(/[&<>"']/g, (c) =>
     ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -53,7 +60,7 @@ function render() {
         <button class="ghost" id="add-athlete" title="Add a new athlete">+ New</button>
         ${a ? '<button class="danger" id="delete-athlete" title="Delete this athlete and all data">🗑</button>' : ''}
       </div>
-      <div class="tz">🕒 SGT (UTC+8)</div>
+      <div class="tz">🕒 SGT (UTC+8) · ${syncBadge()}</div>
       <div class="data-actions">
         <button class="ghost" id="export-data" title="Download all data as a file">⬇ Export</button>
         <button class="ghost" id="import-data" title="Load data from an exported file">⬆ Import</button>

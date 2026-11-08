@@ -12,34 +12,43 @@
 // ---------------------------------------------------------------------------
 
 export const CONFIG = {
-  // ↓↓↓ CHANGE THIS to switch backend ↓↓↓
-  //   'local'    — browser-only (what GitHub Pages uses; safe default)
-  //   'server'   — the bundled Node server over your local network
-  //   'firebase' — later (not yet implemented)
-  // TIP: the committed default is 'local' so the public GitHub Pages site keeps
-  // working. When you run `node server/server.js` and open the site THROUGH it,
-  // set this to 'server' (or leave 'auto' below to detect automatically).
+  // ↓↓↓ Backend selection ↓↓↓
+  //   'auto'     — use Firebase if FIREBASE is filled in; else the Node server
+  //                if it answers; else browser-only localStorage.
+  //   'firebase' — force cloud sync across ALL devices on the internet.
+  //   'server'   — the bundled Node server over your local network.
+  //   'local'    — browser-only (offline; needs Export/Import to move data).
+  //
+  // ***** TO SYNC ACROSS ALL COMPUTERS (no Export/Import needed): *****
+  //   1. Create a free Firebase project → console.firebase.google.com
+  //   2. Add a Web App; copy its config into FIREBASE below.
+  //   3. Build → Firestore Database → Create database (start in *test mode*
+  //      for a quick prototype, or paste the rules from README).
+  //   That's it — every device opening the site then shares the same data live.
   BACKEND: 'auto',
 
   // --- 'server' settings (local-network prototype) ---
-  // Leave blank to use the same host that served the page (recommended: just
-  // open the site via the Node server and this "just works"). Or hard-code your
-  // machine's LAN address, e.g. 'http://192.168.1.42:8080'.
   SERVER_URL: '',
-
-  // How often (ms) the dashboard/input pages pull shared data from the server.
   POLL_MS: 4000,
 
-  // --- 'firebase' settings (fill in later) ---
-  // When you move to Firebase, set BACKEND:'firebase' and paste your config
-  // here, then implement the FIREBASE section at the bottom of this file.
+  // --- 'firebase' settings — PASTE YOUR WEB APP CONFIG HERE ---
+  // When all these are filled, the app automatically uses Firebase and syncs
+  // across every device on the internet in real time. Leave blank to disable.
   FIREBASE: {
     apiKey: '',
     authDomain: '',
     projectId: '',
-    // ...
+    storageBucket: '',
+    messagingSenderId: '',
+    appId: '',
   },
 };
+
+// True once the Firebase config looks filled in (apiKey + projectId present).
+function firebaseConfigured() {
+  const f = CONFIG.FIREBASE || {};
+  return !!(f.apiKey && f.projectId && f.appId);
+}
 
 // All app data lives under these keys. The server stores exactly this shape.
 export const KEYS = {
@@ -67,10 +76,18 @@ export function isShared() {
   return activeBackend() === 'server' || activeBackend() === 'firebase';
 }
 
-// For 'auto': probe the server once. If reachable, use 'server'; else 'local'.
+// Resolve which backend to use.
+//   explicit BACKEND wins; 'auto' → Firebase (if configured) → server (if it
+//   answers) → local.
 export async function resolveBackend() {
   if (_resolved) return _resolved;
-  if (CONFIG.BACKEND !== 'auto') { _resolved = CONFIG.BACKEND; return _resolved; }
+  if (CONFIG.BACKEND === 'firebase') { _resolved = 'firebase'; await initFirebase(); return _resolved; }
+  if (CONFIG.BACKEND === 'server' || CONFIG.BACKEND === 'local') { _resolved = CONFIG.BACKEND; return _resolved; }
+  // auto
+  if (firebaseConfigured()) {
+    try { await initFirebase(); _resolved = 'firebase'; return _resolved; }
+    catch (e) { console.warn('Firebase init failed, falling back:', e.message); }
+  }
   try {
     const res = await fetch(serverBase() + '/api/state', { cache: 'no-store' });
     _resolved = res.ok ? 'server' : 'local';
@@ -126,10 +143,13 @@ export async function pushAll() {
   for (const key of Object.values(KEYS)) await pushKey(key);
 }
 
-// Starts periodic polling; calls onChange() whenever shared data changed.
+// Starts live sync; calls onChange() whenever shared data changed.
+//   firebase → real-time onSnapshot (instant push).
+//   server   → periodic polling every POLL_MS.
 let _timer = null;
 export function startSync(onChange) {
   if (!isShared()) return () => {}; // resolveBackend() must run before this
+  if (activeBackend() === 'firebase') return startSyncFirebase(onChange);
   const tick = async () => {
     try { if (await pullState()) onChange && onChange(); }
     catch (e) { /* offline / server down — keep using local cache */ }
@@ -140,18 +160,66 @@ export function startSync(onChange) {
 }
 
 /* =========================================================================
- * FIREBASE backend — implement later.
- * To migrate:
- *   1. Set CONFIG.BACKEND = 'firebase' and fill CONFIG.FIREBASE above.
- *   2. Add the Firebase SDK (e.g. a <script type="module"> import) and
- *      implement the two functions below to read/write a single document per
- *      key (or a collection). The rest of the app is unchanged.
+ * FIREBASE backend — real cloud sync across ALL devices on the internet.
+ * Uses Firestore. All app data is stored in ONE document:
+ *     collection "eastside_fc" → document "shared"
+ * with one field per KEYS entry (athletes, checkins, mental, overrides,
+ * hydration). We load the Firebase SDK from the CDN on demand so there is no
+ * build step; the rest of the app (store.js) is unchanged.
  * ======================================================================= */
-async function pullStateFirebase() {
-  // e.g. read docs for each KEYS value from Firestore, write into localStorage,
-  // return whether anything changed. Left unimplemented on purpose.
-  throw new Error('Firebase backend not implemented yet — see js/api.js');
+const FB_COLLECTION = 'eastside_fc';
+const FB_DOC = 'shared';
+let _fb = null; // { db, doc, getDoc, setDoc, onSnapshot, ref }
+
+async function initFirebase() {
+  if (_fb) return _fb;
+  if (!firebaseConfigured()) throw new Error('Firebase config is empty');
+  const V = '10.12.2';
+  const appMod = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-app.js`);
+  const fsMod = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-firestore.js`);
+  const app = appMod.initializeApp(CONFIG.FIREBASE);
+  const db = fsMod.getFirestore(app);
+  const ref = fsMod.doc(db, FB_COLLECTION, FB_DOC);
+  _fb = { db, ref, getDoc: fsMod.getDoc, setDoc: fsMod.setDoc, updateDoc: fsMod.updateDoc, onSnapshot: fsMod.onSnapshot };
+  return _fb;
 }
-async function pushKeyFirebase(_key, _value) {
-  throw new Error('Firebase backend not implemented yet — see js/api.js');
+
+// Writes a Firestore snapshot's fields into localStorage. Returns true if
+// anything changed locally.
+function applyFirebaseData(data) {
+  let changed = false;
+  for (const key of Object.values(KEYS)) {
+    const fallback = (key === KEYS.overrides || key === KEYS.hydration) ? {} : [];
+    const incoming = JSON.stringify((data && data[key]) ?? fallback);
+    if (localStorage.getItem(key) !== incoming) { localStorage.setItem(key, incoming); changed = true; }
+  }
+  return changed;
+}
+
+async function pullStateFirebase() {
+  const fb = await initFirebase();
+  const snap = await fb.getDoc(fb.ref);
+  return applyFirebaseData(snap.exists() ? snap.data() : {});
+}
+
+// Firestore field names can't contain '/', but our KEYS don't — they're safe.
+async function pushKeyFirebase(key, value) {
+  const fb = await initFirebase();
+  // value is JSON text; store the parsed object so Firestore holds real JSON.
+  let parsed;
+  try { parsed = JSON.parse(value); } catch { parsed = value; }
+  // merge:true so each key updates independently without clobbering the others.
+  await fb.setDoc(fb.ref, { [key]: parsed, _updatedAt: Date.now() }, { merge: true });
+}
+
+// Real-time listener: pushes changes to every device instantly.
+function startSyncFirebase(onChange) {
+  let stop = () => {};
+  initFirebase().then((fb) => {
+    stop = fb.onSnapshot(fb.ref, (snap) => {
+      const changed = applyFirebaseData(snap.exists() ? snap.data() : {});
+      if (changed && onChange) onChange();
+    }, (err) => console.warn('Firebase onSnapshot error:', err && err.message));
+  }).catch((e) => console.warn('Firebase sync not started:', e.message));
+  return () => stop();
 }

@@ -683,3 +683,8 @@ a.ghost { text-decoration: none; display: inline-flex; align-items: center; }
 
 /* Emphasise today's hydration goal in the coach insights box */
 .hydration-today-big { margin-top: 6px; font-size: 18px; font-weight: 800; color: var(--blue); }
+
+/* Cloud/LAN sync status badge in the top bar */
+.sync-badge { font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 999px; }
+.sync-badge.on { color: var(--green); background: rgba(61,220,132,.15); }
+.sync-badge.off { color: var(--muted); background: rgba(139,154,171,.15); }

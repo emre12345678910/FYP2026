@@ -14,12 +14,41 @@ The project is split into **two pages** that share the same code and `localStora
 | **`dashboard.html`** | Coach | **Dashboard** (read-only / output only) — **Physiological** tab (sub-tabs *Daily* / *Training*) + **Psychological** tab |
 
 The input app writes; the dashboard reads. Because they share the same browser origin + `localStorage`,
-data entered on a device shows up on that device's dashboard automatically. To move data between devices,
-use **⬇ Export / ⬆ Import** (true cross-device sync would need a backend).
+data entered on a device shows up on that device's dashboard automatically.
+
+## Syncing data across devices
+
+The app supports three data backends (set in `js/api.js`); it auto-detects which to use:
+
+| Backend | Syncs across… | Setup |
+|---|---|---|
+| **Firebase (cloud)** ⭐ | **every device on the internet, live** | paste a Firebase config (below) |
+| Node server | devices on the same Wi-Fi/LAN | run `node server/server.js` |
+| localStorage | nothing (per-device) | nothing — use ⬇ Export / ⬆ Import to move data |
+
+The top bar shows which is active: **☁ Cloud sync on**, **🖧 LAN sync on**, or **📴 This device only**.
+
+### ⭐ Option 0 — Firebase cloud sync (no Export/Import, works everywhere)
+
+This is the proper fix for "data should save on all computers". It's free and needs **no server you run**:
+
+1. Go to **console.firebase.google.com** → **Add project** (any name).
+2. In the project, click the **Web** icon (`</>`) to **register a web app**; copy the
+   `firebaseConfig` object it shows you.
+3. Open **`js/api.js`** and paste those values into `CONFIG.FIREBASE`
+   (`apiKey`, `authDomain`, `projectId`, `storageBucket`, `messagingSenderId`, `appId`).
+4. In the Firebase console: **Build → Firestore Database → Create database**.
+   For a quick prototype choose **Start in test mode** (open for 30 days). For real use,
+   set rules that allow read/write to the single `eastside_fc/shared` document.
+5. Commit & deploy. Done — **every device that opens the site now shares the same data in real time.**
+
+All app data lives in one Firestore document (`eastside_fc/shared`); each save pushes
+up automatically and a live listener updates every other device instantly. If the config
+is left blank, the app simply falls back to the Node server or localStorage.
 
 ## Run it
 
-### Option A — shared prototype over your local network (recommended)
+### Option A — shared prototype over your local network
 
 The bundled **zero-dependency Node server** serves the pages **and** a shared data
 store, so the input app and the coach dashboard see the **same data across devices**
