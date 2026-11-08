@@ -12,9 +12,9 @@ import {
   hydrationGoalMl, exerciseMinutesToday,
   exportData, importData, pullState, startSync, isShared, resolveBackend, activeBackend,
   BP_TIMINGS, INTENSITY_LEVELS, PAIN_SYMPTOMS,
-} from './store.js?v=16';
-import { QUESTIONNAIRES, itemId } from './psych.js?v=16';
-import { hydrationWeekChart, bpWeekChart, bodyMassWeekChart, sleepChart } from './charts.js?v=16';
+} from './store.js?v=17';
+import { QUESTIONNAIRES, itemId } from './psych.js?v=17';
+import { hydrationWeekChart, bpWeekChart, bodyMassWeekChart, sleepChart } from './charts.js?v=17';
 
 const root = document.getElementById('app');
 // section = top-level ('physio' | 'mental'); physioSub = 'daily' | 'training'
@@ -779,9 +779,17 @@ function liveRefresh() {
 }
 
 async function boot() {
-  await resolveBackend();
-  if (isShared()) { try { await pullState(); } catch (e) { /* server offline; use local cache */ } }
+  // Paint immediately from the local cache so the page never waits on the
+  // network. Then connect to the shared backend in the background; when its
+  // data arrives, startSync()'s listener re-renders.
   render();
-  startSync(liveRefresh);
+  try {
+    await resolveBackend();
+    render(); // re-render so the sync badge reflects the resolved backend
+    if (isShared()) {
+      pullState().then((changed) => { if (changed) render(); }).catch(() => {});
+      startSync(liveRefresh);
+    }
+  } catch (e) { /* stay on local cache */ }
 }
 boot();
