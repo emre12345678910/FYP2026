@@ -1,7 +1,7 @@
 // store.js — persistence + Singapore Time + core domain logic
 // Zero dependencies. Data persists in localStorage.
 
-import { CONFIG, pushKey, pushAll, pullState, startSync, isShared, resolveBackend, activeBackend, KEYS } from './api.js?v=17';
+import { CONFIG, pushKey, pushAll, pullState, startSync, isShared, resolveBackend, activeBackend, KEYS } from './api.js?v=18';
 
 export const SGT = 'Asia/Singapore';
 const STORAGE_KEY = 'eastside_fc_checkins_v1';
@@ -97,17 +97,21 @@ export const DEFAULT_BOTTLE_ML = 750;
 export function getAthletes() {
   const raw = localStorage.getItem(ATHLETE_KEY);
   if (raw) return JSON.parse(raw);
-  const seed = [
-    { id: 'a1', name: 'Marcus Tan', gender: 'Male', combatType: 'Boxing', avatar: 'boxer', romBaseline: 135, currentWeight: 72.5, age: 24, bottleMl: 750, hydrationGoalMl: 3000 },
-    { id: 'a2', name: 'Priya Nair', gender: 'Female', combatType: 'Muay Thai', avatar: 'muaythai', romBaseline: 140, currentWeight: 61.0, age: 27, bottleMl: 600, hydrationGoalMl: 2500 },
-    { id: 'a3', name: 'Devon Lee', gender: 'Male', combatType: 'Muay Thai', avatar: 'boxer', romBaseline: 130, currentWeight: 80.3, age: 22, bottleMl: 1000, hydrationGoalMl: 3500 },
+  // IMPORTANT: do NOT persist a seed. On first load, shared (Firebase) data may
+  // not have arrived yet; persisting a seed would push demo athletes to the
+  // cloud and overwrite real data from other devices. Return demo athletes
+  // in-memory only — they vanish once real data (local or cloud) exists and are
+  // never written to the backend.
+  return [
+    { id: 'a1', name: 'Marcus Tan', gender: 'Male', combatType: 'Boxing', avatar: 'boxer', romBaseline: 135, currentWeight: 72.5, age: 24, bottleMl: 750, hydrationGoalMl: 3000, _demo: true },
+    { id: 'a2', name: 'Priya Nair', gender: 'Female', combatType: 'Muay Thai', avatar: 'muaythai', romBaseline: 140, currentWeight: 61.0, age: 27, bottleMl: 600, hydrationGoalMl: 2500, _demo: true },
+    { id: 'a3', name: 'Devon Lee', gender: 'Male', combatType: 'Muay Thai', avatar: 'boxer', romBaseline: 130, currentWeight: 80.3, age: 22, bottleMl: 1000, hydrationGoalMl: 3500, _demo: true },
   ];
-  persist(ATHLETE_KEY, JSON.stringify(seed));
-  return seed;
 }
 
 export function addAthlete({ name, gender, combatType, romBaseline, currentWeight, age, bottleMl }) {
-  const athletes = getAthletes();
+  // Drop in-memory demo athletes so they are never persisted / pushed to cloud.
+  const athletes = getAthletes().filter((a) => !a._demo);
   const athlete = {
     id: 'a' + Date.now() + Math.floor(Math.random() * 100000),
     name: String(name).trim(),
