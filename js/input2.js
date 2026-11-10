@@ -11,10 +11,11 @@ import {
   getHydrationToday, addBottle, removeBottle, DEFAULT_BOTTLE_ML,
   hydrationGoalMl, exerciseMinutesToday,
   exportData, importData, pullState, startSync, isShared, resolveBackend, activeBackend,
+  MASS_GOALS, getMassGoal, massGoalStatus,
   BP_TIMINGS, INTENSITY_LEVELS, PAIN_SYMPTOMS,
-} from './store.js?v=18';
-import { QUESTIONNAIRES, itemId } from './psych.js?v=18';
-import { hydrationWeekChart, bpWeekChart, bodyMassWeekChart, sleepChart } from './charts.js?v=18';
+} from './store.js?v=19';
+import { QUESTIONNAIRES, itemId } from './psych.js?v=19';
+import { hydrationWeekChart, bpWeekChart, bodyMassWeekChart, sleepChart } from './charts.js?v=19';
 
 const root = document.getElementById('app');
 // section = top-level ('physio' | 'mental'); physioSub = 'daily' | 'training'
@@ -546,22 +547,7 @@ function openHistory(kind, a) {
     return historyModal('Sleep History', sub, body);
   }
 
-  if (kind === 'bodymass') {
-    const list = checkins.filter((c) => c.body_mass_kg != null);
-    const series = list.slice(-7).map((c) => ({ label: sgtDay(c.timestampUtc).slice(5), kg: c.body_mass_kg }));
-    const first = list[0]?.body_mass_kg, latest = list[list.length - 1]?.body_mass_kg;
-    const change = (first != null && latest != null) ? (latest - first) : null;
-    const body = `
-      ${summaryCards([
-        { k: 'Latest', v: latest != null ? latest + ' kg' : '—' },
-        { k: 'Earliest', v: first != null ? first + ' kg' : '—' },
-        { k: 'Net change', v: change == null ? '—' : (change > 0 ? '+' : '') + change.toFixed(1) + ' kg', cls: change != null && change < 0 ? 'accent' : 'green' },
-        { k: 'Recordings', v: list.length },
-      ])}
-      <div class="hist-chart">${bodyMassWeekChart(series)}</div>
-      ${bodyMassLogTable(checkins)}`;
-    return historyModal('Body Mass History', sub, body);
-  }
+  if (kind === 'bodymass') return openBodyMass(a);
 
   if (kind === 'training') {
     const list = checkins.filter((c) => c.intensity_level || c.srpe != null || c.duration_mins != null);
@@ -623,6 +609,118 @@ function openHistory(kind, a) {
           : '<tr><td colspan="6" class="muted">No pain entries yet.</td></tr>'}</tbody></table></div>`;
     return historyModal('Pain & Symptoms History', sub, body);
   }
+}
+
+/* ----------------------- Body Mass full view (sketch) -------------------- */
+// A nicer-looking date like "Today · 6 Nov 2026" / "6 Nov 2026".
+function prettyMassDate(utcIso) {
+  const day = sgtDay(utcIso);                 // YYYY-MM-DD in SGT
+  const [y, m, d] = day.split('-').map(Number);
+  const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  const text = `${d} ${MONTHS[m - 1]} ${y}`;
+  const isToday = day === sgtDay(new Date().toISOString());
+  return isToday ? `Today · ${text}` : text;
+}
+
+// Recent-records table with a goal-aware status per row (matches the sketch's
+// "Goals" column: on track / maintained / etc.).
+function bodyMassRecords(a, list) {
+  if (!list.length) return '<p class="muted">No body-mass recordings yet.</p>';
+  const goal = getMassGoal(a);
+  const rows = list.slice().reverse().map((c, i, arr) => {
+    const prev = arr[i + 1];                   // older record (list is newest-first here)
+    const delta = prev && prev.body_mass_kg != null ? c.body_mass_kg - prev.body_mass_kg : null;
+    let status, scls;
+    if (delta == null) { status = 'First recording'; scls = 'muted'; }
+    else if (goal === 'maintain') {
+      const steady = Math.abs(delta) <= 0.5;
+      status = steady ? 'On track' : (delta > 0 ? 'Weight up' : 'Weight down');
+      scls = steady ? 'green' : 'yellow';
+    } else if (goal === 'gain') {
+      status = delta >= 0 ? 'On track' : 'Off track'; scls = delta >= 0 ? 'green' : 'yellow';
+    } else { // lose
+      status = delta <= 0 ? 'On track' : 'Off track'; scls = delta <= 0 ? 'green' : 'yellow';
+    }
+    return `<tr>
+      <td>${esc(prettyMassDate(c.timestampUtc))}</td>
+      <td>${c.body_mass_kg} kg</td>
+      <td><span class="tier ${scls}">${status}</span></td></tr>`;
+  }).join('');
+  return `<div class="table-wrap"><table class="data-table">
+    <thead><tr><th>Date</th><th>Body mass</th><th>Goal status</th></tr></thead>
+    <tbody>${rows}</tbody></table></div>`;
+}
+
+// The wireframe "Body Mass" screen, rendered inside the history modal.
+function openBodyMass(a) {
+  const list = checkinsForAthlete(a.id).filter((c) => c.body_mass_kg != null);
+  const latest = list[list.length - 1] || null;
+  const goalKey = getMassGoal(a);
+  const status = massGoalStatus(a);
+  const series = list.slice(-7).map((c) => ({ label: sgtDay(c.timestampUtc).slice(5), kg: c.body_mass_kg }));
+
+  const goalOptions = Object.values(MASS_GOALS)
+    .map((g) => `<option value="${g.key}" ${g.key === goalKey ? 'selected' : ''}>${g.label}</option>`).join('');
+
+  const statusChip = status.onTrack === null
+    ? `<span class="muted small">${esc(status.detail)}</span>`
+    : `<div class="bm-goal-status ${status.cls}">
+         <span class="bm-goal-eye">${status.onTrack ? '🎯' : '⚠️'}</span>
+         <div><strong>${esc(status.label)}</strong><div class="muted small">${esc(status.detail)}</div></div>
+       </div>`;
+
+  const body = `
+    <div class="bm-view">
+      <p class="bm-intro">Track ${esc(a.name)}'s body mass and monitor progress over time.</p>
+
+      <div class="bm-top">
+        <section class="bm-card">
+          <h4 class="bm-card-title">Latest Measurement</h4>
+          ${latest
+            ? `<div class="bm-latest-kg">${latest.body_mass_kg}<span class="bm-unit">kg</span></div>
+               <div class="muted small">${esc(prettyMassDate(latest.timestampUtc))}</div>`
+            : '<p class="muted">No measurement logged yet.</p>'}
+        </section>
+
+        <section class="bm-card">
+          <h4 class="bm-card-title">Your Goal</h4>
+          <label class="bm-goal-select">
+            <select id="bm-goal">${goalOptions}</select>
+          </label>
+          ${statusChip}
+        </section>
+      </div>
+
+      <section class="bm-card bm-trend">
+        <h4 class="bm-card-title">📈 Body Mass Trend</h4>
+        <div class="hist-chart">${bodyMassWeekChart(series, { labelLast: true, title: '' })}</div>
+      </section>
+
+      <section class="bm-card">
+        <h4 class="bm-card-title">Recent Records</h4>
+        ${bodyMassRecords(a, list)}
+      </section>
+
+      <button class="primary bm-log-btn" id="bm-log">+ Log Body Mass</button>
+    </div>`;
+
+  historyModal('Body Mass', 'BOXING · TRACK · RECOVER · REPEAT', body);
+
+  // Wire up the goal selector (re-renders the modal) and the log button.
+  const goalSel = document.getElementById('bm-goal');
+  if (goalSel) goalSel.addEventListener('change', () => {
+    updateAthlete(a.id, { massGoal: goalSel.value });
+    const prev = document.querySelector('.modal-overlay');
+    if (prev) prev.remove();
+    openBodyMass({ ...a, massGoal: goalSel.value });
+  });
+  const logBtn = document.getElementById('bm-log');
+  if (logBtn) logBtn.addEventListener('click', () => {
+    const overlay = document.querySelector('.modal-overlay');
+    if (overlay) overlay.remove();
+    const input = root.querySelector('#body-mass-input');
+    if (input) { input.focus(); input.scrollIntoView({ behavior: 'smooth', block: 'center' }); }
+  });
 }
 
 /* ------------------------------- Bindings ------------------------------- */

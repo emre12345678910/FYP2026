@@ -1,7 +1,7 @@
 // store.js — persistence + Singapore Time + core domain logic
 // Zero dependencies. Data persists in localStorage.
 
-import { CONFIG, pushKey, pushAll, pullState, startSync, isShared, resolveBackend, activeBackend, KEYS } from './api.js?v=18';
+import { CONFIG, pushKey, pushAll, pullState, startSync, isShared, resolveBackend, activeBackend, KEYS } from './api.js?v=19';
 
 export const SGT = 'Asia/Singapore';
 const STORAGE_KEY = 'eastside_fc_checkins_v1';
@@ -300,6 +300,56 @@ export function checkinsForAthlete(athleteId) {
 export function lastBodyMass(athleteId) {
   const withMass = checkinsForAthlete(athleteId).filter((c) => c.body_mass_kg != null);
   return withMass.length ? withMass[withMass.length - 1].body_mass_kg : null;
+}
+
+/* ---------------------------- Body-mass goal ----------------------------- */
+// A simple, physiological-only goal attached to the athlete profile:
+//   'maintain' | 'gain' | 'lose'. Defaults to 'maintain'. Stored on the athlete
+// object (never touches the mental-log store).
+export const MASS_GOALS = {
+  maintain: { key: 'maintain', label: 'Maintain', verb: 'maintaining' },
+  gain: { key: 'gain', label: 'Gain', verb: 'gaining' },
+  lose: { key: 'lose', label: 'Lose', verb: 'losing' },
+};
+
+export function getMassGoal(athlete) {
+  const g = athlete && athlete.massGoal;
+  return MASS_GOALS[g] ? g : 'maintain';
+}
+
+// Evaluate whether the athlete is "on track" for their body-mass goal, based on
+// the net change across their recorded body-mass series. Returns
+// { onTrack: bool, label, detail, cls } or null when there isn't enough data.
+//   maintain → net change within ±1.0 kg of the first recording
+//   gain     → latest is at least 0.2 kg above the first recording
+//   lose     → latest is at least 0.2 kg below the first recording
+export function massGoalStatus(athlete) {
+  const goal = getMassGoal(athlete);
+  const list = checkinsForAthlete(athlete.id).filter((c) => c.body_mass_kg != null);
+  if (list.length < 2) {
+    return { onTrack: null, label: 'Not enough data', detail: 'Log a few weigh-ins to track progress.', cls: 'muted' };
+  }
+  const first = list[0].body_mass_kg;
+  const latest = list[list.length - 1].body_mass_kg;
+  const net = Math.round((latest - first) * 10) / 10;
+  const netStr = `${net > 0 ? '+' : ''}${net.toFixed(1)} kg since first recording`;
+  if (goal === 'maintain') {
+    const onTrack = Math.abs(net) <= 1.0;
+    return onTrack
+      ? { onTrack: true, label: 'You are on track!', detail: `Steady · ${netStr}`, cls: 'green' }
+      : { onTrack: false, label: 'Drifting off goal', detail: `Weight moved ${netStr}`, cls: 'yellow' };
+  }
+  if (goal === 'gain') {
+    const onTrack = net >= 0.2;
+    return onTrack
+      ? { onTrack: true, label: 'You are on track!', detail: `Trending up · ${netStr}`, cls: 'green' }
+      : { onTrack: false, label: 'Not gaining yet', detail: netStr, cls: 'yellow' };
+  }
+  // lose
+  const onTrack = net <= -0.2;
+  return onTrack
+    ? { onTrack: true, label: 'You are on track!', detail: `Trending down · ${netStr}`, cls: 'green' }
+    : { onTrack: false, label: 'Not losing yet', detail: netStr, cls: 'yellow' };
 }
 
 /* --------------------------- Hydration tracking -------------------------- */

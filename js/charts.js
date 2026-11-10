@@ -388,7 +388,9 @@ export function bpWeekChart(series) {
 }
 
 // Weekly body-mass (kg) as a red line.
-export function bodyMassWeekChart(series) {
+// opts.labelLast → annotate the final point with its value (e.g. "72.4kg").
+// opts.title     → override/clear the chart title.
+export function bodyMassWeekChart(series, opts = {}) {
   const data = series.filter((s) => s.kg != null);
   if (!data.length) return emptyChart('No body-mass data yet');
   const labels = data.map((s) => s.label);
@@ -397,8 +399,19 @@ export function bodyMassWeekChart(series) {
   const max = Math.ceil(Math.max(...kgs) + 1);
   const pts = data.map((s, i) => ({ x: scaleX(i, data.length), y: scaleY(s.kg, min, max) }));
   const dots = pts.map((p) => `<circle cx="${p.x}" cy="${p.y}" r="3" class="dot-red"/>`).join('');
+  // Optional value label floating beside the last point (matches the sketch).
+  let lastLabel = '';
+  if (opts.labelLast && pts.length) {
+    const last = pts[pts.length - 1];
+    const lastKg = kgs[kgs.length - 1];
+    const anchorRight = last.x > W - P.r - 70; // flip to the left near the edge
+    lastLabel =
+      `<text x="${anchorRight ? last.x - 8 : last.x + 8}" y="${last.y - 8}" ` +
+      `class="pt-label" text-anchor="${anchorRight ? 'end' : 'start'}">${lastKg.toFixed(1)}kg</text>`;
+  }
+  const title = 'title' in opts ? opts.title : 'Body Mass (kg)';
   return svgWrap(
-    axes(min, max, labels, { yFmt: (v) => v.toFixed(1) + 'kg', title: 'Body Mass (kg)' }) +
-    `<path d="${path(pts)}" class="line-red"/>` + dots
+    axes(min, max, labels, { yFmt: (v) => v.toFixed(1) + 'kg', title }) +
+    `<path d="${path(pts)}" class="line-red"/>` + dots + lastLabel
   );
 }
