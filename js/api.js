@@ -57,6 +57,7 @@ export const KEYS = {
   mental: 'eastside_fc_mental_v1',
   overrides: 'eastside_fc_overrides_v1',
   hydration: 'eastside_fc_hydration_v1',
+  users: 'eastside_fc_users_v1',
 };
 
 function serverBase() {
@@ -189,6 +190,18 @@ function mergeById(localArr, cloudArr) {
   return [...byId.values()];
 }
 function mergeMap(localObj, cloudObj) { return { ...(localObj || {}), ...(cloudObj || {}) }; }
+
+// The users store is { users:[...], grants:{...} }. Merge accounts by id (cloud
+// wins on conflict) and grants per coach key, so neither device clobbers the
+// other's new accounts/grants.
+function mergeUsers(localU, cloudU) {
+  const l = localU && typeof localU === 'object' ? localU : { users: [], grants: {} };
+  const c = cloudU && typeof cloudU === 'object' ? cloudU : { users: [], grants: {} };
+  return {
+    users: mergeById(l.users || [], c.users || []),
+    grants: { ...(l.grants || {}), ...(c.grants || {}) },
+  };
+}
 function readLocal(key, fallback) {
   const raw = localStorage.getItem(key);
   if (raw == null) return fallback;
@@ -213,6 +226,12 @@ function applyMergedState(data) {
     const text = JSON.stringify(merged);
     if (localStorage.getItem(key) !== text) { localStorage.setItem(key, text); changed = true; }
   }
+  // Users store merges accounts-by-id + grants-per-coach.
+  {
+    const merged = mergeUsers(readLocal(KEYS.users, { users: [], grants: {} }), data[KEYS.users] || {});
+    const text = JSON.stringify(merged);
+    if (localStorage.getItem(KEYS.users) !== text) { localStorage.setItem(KEYS.users, text); changed = true; }
+  }
   return changed;
 }
 
@@ -231,7 +250,13 @@ async function pushKeyFirebase(key, value) {
   try { parsed = JSON.parse(value); } catch { parsed = value; }
   const arrayKeys = [KEYS.athletes, KEYS.checkins, KEYS.mental];
   const mapKeys = [KEYS.overrides, KEYS.hydration];
-  if (arrayKeys.includes(key) || mapKeys.includes(key)) {
+  if (key === KEYS.users) {
+    try {
+      const snap = await fb.getDoc(fb.ref);
+      const cloud = snap.exists() ? snap.data()[key] : undefined;
+      parsed = mergeUsers(cloud, parsed);
+    } catch { /* if the read fails, write local value as-is */ }
+  } else if (arrayKeys.includes(key) || mapKeys.includes(key)) {
     try {
       const snap = await fb.getDoc(fb.ref);
       const cloud = snap.exists() ? snap.data()[key] : undefined;

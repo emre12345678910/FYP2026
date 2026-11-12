@@ -16,10 +16,25 @@ import {
 } from './store.js?v=19';
 import { QUESTIONNAIRES, itemId } from './psych.js?v=19';
 import { hydrationWeekChart, bpWeekChart, bodyMassWeekChart, sleepChart } from './charts.js?v=19';
+import {
+  ensureSeedAdmin, currentUser, renderLogin, renderAdminPanel,
+  accountChip, bindAccountChip,
+} from './login.js?v=19';
+import { visibleAthleteIds as _vids } from './auth.js?v=19';
 
 const root = document.getElementById('app');
 // section = top-level ('physio' | 'mental'); physioSub = 'daily' | 'training'
 let state = { section: 'physio', physioSub: 'daily', selectedAthlete: null };
+let AUTH = null; // the signed-in user for this session
+
+// Athletes this signed-in user may see (student → own; coach → granted;
+// admin → all). Demo athletes are hidden once a real account exists.
+function scopedAthletes() {
+  const all = getAthletes();
+  const ids = _vids(AUTH);
+  if (ids === null) return all;              // admin: everyone
+  return all.filter((a) => ids.includes(a.id));
+}
 
 function athleteById(id) { return getAthletes().find((a) => a.id === id); }
 // A small badge showing whether cloud sync is active.
@@ -36,12 +51,43 @@ function esc(s) {
 
 /* --------------------------------- Shell --------------------------------- */
 function render() {
-  const athletes = getAthletes();
+  const athletes = scopedAthletes();
+  const isStudent = AUTH && AUTH.role === 'student';
+  const canManage = AUTH && AUTH.role === 'admin';   // only admin adds/deletes athletes here
+
+  // Students are pinned to their own athlete; everyone else uses the picker.
+  if (isStudent) state.selectedAthlete = AUTH.athleteId || null;
   if (!state.selectedAthlete && athletes.length) state.selectedAthlete = athletes[0].id;
-  const a = athleteById(state.selectedAthlete);
+  if (state.selectedAthlete && !athletes.some((a) => a.id === state.selectedAthlete)) {
+    state.selectedAthlete = athletes.length ? athletes[0].id : null;
+  }
+  const a = athleteById(state.selectedAthlete) && athletes.some((x) => x.id === state.selectedAthlete)
+    ? athleteById(state.selectedAthlete) : null;
 
   const opts = athletes.map((x) =>
     `<option value="${x.id}" ${x.id === state.selectedAthlete ? 'selected' : ''}>${esc(x.name)}</option>`).join('');
+
+  // Picker: students see their fixed name (no dropdown); coaches/admin pick from
+  // their scoped list; only admin may add/delete athlete records.
+  const pickerHtml = isStudent
+    ? `<div class="athlete-picker-top"><span class="student-name">${esc((a && a.name) || 'Your profile')}</span></div>`
+    : `<div class="athlete-picker-top">
+        <select id="athlete-select" title="Select athlete">${opts || '<option>No athletes</option>'}</select>
+        ${canManage ? '<button class="ghost" id="add-athlete" title="Add a new athlete">+ New</button>' : ''}
+        ${canManage && a ? '<button class="danger" id="delete-athlete" title="Delete this athlete and all data">🗑</button>' : ''}
+      </div>`;
+
+  const adminLink = AUTH && AUTH.role === 'admin' ? '<a class="ghost" href="admin.html" title="Admin panel">🛠 Admin</a>' : '';
+  const dataActions = AUTH && AUTH.role === 'admin'
+    ? `<button class="ghost" id="export-data" title="Download all data as a file">⬇ Export</button>
+       <button class="ghost" id="import-data" title="Load data from an exported file">⬆ Import</button>
+       <input type="file" accept="application/json,.json" id="import-file" hidden>
+       <a class="ghost" href="dashboard.html" title="Open the coach dashboard">📊 Dashboard →</a>`
+    : '';
+
+  const emptyMsg = isStudent
+    ? '<section class="panel"><p class="muted">Your account isn’t linked to an athlete profile yet. Ask your admin to link it.</p></section>'
+    : '<section class="panel"><p class="muted">No athletes you can access yet.</p></section>';
 
   root.innerHTML = `
     <header class="topbar">
@@ -56,25 +102,21 @@ function render() {
         <button class="tab ${state.section === 'physio' ? 'active' : ''}" data-section="physio">🫀 Physiological</button>
         <button class="tab ${state.section === 'mental' ? 'active' : ''}" data-section="mental">🧠 Mental log</button>
       </nav>
-      <div class="athlete-picker-top">
-        <select id="athlete-select" title="Select athlete">${opts || '<option>No athletes</option>'}</select>
-        <button class="ghost" id="add-athlete" title="Add a new athlete">+ New</button>
-        ${a ? '<button class="danger" id="delete-athlete" title="Delete this athlete and all data">🗑</button>' : ''}
-      </div>
+      ${pickerHtml}
       <div class="tz">🕒 SGT (UTC+8) · ${syncBadge()}</div>
       <div class="data-actions">
-        <button class="ghost" id="export-data" title="Download all data as a file">⬇ Export</button>
-        <button class="ghost" id="import-data" title="Load data from an exported file">⬆ Import</button>
-        <input type="file" accept="application/json,.json" id="import-file" hidden>
-        <a class="ghost" href="dashboard.html" title="Open the coach dashboard">📊 Dashboard →</a>
+        ${dataActions}
+        ${adminLink}
+        ${accountChip(AUTH)}
       </div>
     </header>
-    <main>${!a ? '<section class="panel"><p class="muted">Add an athlete to start logging.</p></section>'
+    <main>${!a ? emptyMsg
       : state.section === 'mental' ? mentalLog(a)
       : physioSection(a)}</main>
   `;
 
   bindShell();
+  bindAccountChip(root, showLogin);
   if (!a) return;
   if (state.section === 'mental') { bindMental(a); return; }
   // Physiological section
@@ -876,18 +918,40 @@ function liveRefresh() {
   if (!typing) render();
 }
 
-async function boot() {
-  // Paint immediately from the local cache so the page never waits on the
-  // network. Then connect to the shared backend in the background; when its
-  // data arrives, startSync()'s listener re-renders.
+// Shows the login screen; on success routes by role and starts the app.
+function showLogin() {
+  AUTH = null;
+  renderLogin(root, (user) => { AUTH = user; startApp(); });
+}
+
+// Renders the app for the signed-in user and wires live sync.
+function appRender() {
+  // Admin uses the dedicated Admin panel for account management, but can still
+  // use the input app (they see all athletes) — so we just render normally.
   render();
+}
+
+function startApp() {
+  appRender();
+  if (isShared()) {
+    pullState().then((changed) => { if (changed) appRender(); }).catch(() => {});
+    startSync(() => { if (AUTH) liveRefresh(); });
+  }
+}
+
+async function boot() {
+  // Connect to the shared backend FIRST so account data (which lives in the
+  // same store) is available before we decide whether anyone is logged in.
   try {
     await resolveBackend();
-    render(); // re-render so the sync badge reflects the resolved backend
-    if (isShared()) {
-      pullState().then((changed) => { if (changed) render(); }).catch(() => {});
-      startSync(liveRefresh);
-    }
+    if (isShared()) { try { await pullState(); } catch (e) { /* offline */ } }
   } catch (e) { /* stay on local cache */ }
+
+  await ensureSeedAdmin();
+
+  const user = currentUser();
+  if (!user) { showLogin(); return; }
+  AUTH = user;
+  startApp();
 }
 boot();

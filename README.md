@@ -93,6 +93,33 @@ database later (e.g. Firebase) so it works beyond the local network, set
 `CONFIG.BACKEND = 'firebase'`, fill in `CONFIG.FIREBASE`, and implement the two marked
 functions at the bottom of that file. **No other file needs to change.**
 
+## Accounts, login & roles (prototype)
+
+The app has a login screen and three roles:
+
+| Role | Can do |
+|---|---|
+| **Admin** | Create accounts, link each **student** account to an athlete record, and grant **coaches** access to specific athletes. Sees everything. Admin panel at `admin.html`. |
+| **Student** | Logs in and sees/edits **only their own** athlete profile (no athlete picker, no add/delete). |
+| **Coach** | Opens the dashboard and sees **only** the athletes an admin granted them. |
+
+First-run default admin — username **`admin`**, password **`admin123`** (change it after signing
+in, via the Admin panel). Accounts are stored (passwords hashed with SHA-256 + a per-user salt) in
+the same synced store as the rest of the data, so logins work across devices once Firebase sync is on.
+
+Where it lives: `js/auth.js` (accounts, hashing, sessions, access scopes), `js/login.js` (login screen
++ Admin panel), `js/admin.js` + `admin.html` (admin entry). Both apps gate on login in their `boot()`.
+
+> ⚠️ **This is UI-level / prototype access control.** It gates the interface and scopes what each role
+> sees, but because the app is fully client-side and all data lives in one shared store, a technically
+> skilled user could bypass these checks in the browser. **It is a demonstration of the access model,
+> not cryptographic security.**
+>
+> **Upgrading to enforced security (later):** use **Firebase Authentication** for real login and
+> **Firestore Security Rules** + a per-athlete/per-user data layout so the *server* enforces that a
+> student can only read/write their own records and a coach only their granted athletes. That requires
+> changes in the Firebase console (enable Auth, deploy rules) in addition to code.
+
 ## Psychological monitoring (Mental log)
 
 The Mental log captures four aspects, each via a validated sport-psychology instrument. The dashboard
@@ -153,13 +180,17 @@ Derived from the worst active alert: 🟢 **Cleared** · 🟡 **Modified** · �
 index.html        # Athlete Daily Log shell (default landing page)
 input.html        # Athlete Daily Log shell (alias of index.html)
 dashboard.html    # Coach Dashboard shell (read-only)
+admin.html        # Admin panel shell (accounts & coach-access grants)
 styles.css        # dark fight-club theme
 js/api.js         # swappable backend adapter (local / server / firebase) — change here only
+js/auth.js        # accounts, password hashing, sessions, role access scopes
+js/login.js       # login screen + Admin panel UI
+js/admin.js       # Admin panel entry controller
 js/store.js       # persistence (incl. mental logs), SGT timestamping, derived-metric math
 js/alerts.js      # physiological alert engine + RTP status tiers
 js/charts.js      # tiny hand-rolled SVG charts (physio + psych), no chart library
 js/psych.js       # questionnaire definitions (RESTQ/POMS/TSCI/SMS-II) + scoring
-js/input2.js      # Athlete Input controller (Daily / Training / Mental logs)
-js/dashboard2.js  # Coach Dashboard controller (Physiological + Psychological tabs)
+js/input2.js      # Athlete Input controller (gated by login; student self-scoped)
+js/dashboard2.js  # Coach Dashboard controller (gated by login; coach scoped to grants)
 server/server.js  # zero-dependency Node server: static files + shared data API
 ```

@@ -713,3 +713,55 @@ a.ghost { text-decoration: none; display: inline-flex; align-items: center; }
 .bm-trend .hist-chart { margin-bottom: 0; }
 .bm-log-btn { align-self: stretch; width: 100%; padding: 14px; font-size: 16px; }
 @media (max-width: 560px) { .bm-top { grid-template-columns: 1fr; } }
+
+/* ===================== Auth: login, account chip, admin ================= */
+
+/* Login screen */
+.auth-wrap {
+  min-height: 100vh; display: flex; align-items: center; justify-content: center;
+  padding: 24px; background: var(--bg);
+}
+.auth-card {
+  width: 100%; max-width: 380px; background: var(--panel);
+  border: 1px solid var(--line); border-radius: var(--radius);
+  padding: 28px 26px; display: flex; flex-direction: column; gap: 12px;
+  box-shadow: 0 10px 40px rgba(0,0,0,.35);
+}
+.auth-brand { display: flex; align-items: center; gap: 10px; }
+.auth-brand .logo { font-size: 28px; }
+.auth-brand h1 { margin: 0; font-size: 22px; }
+.auth-sub { margin: 0 0 6px; color: var(--muted); font-weight: 600; }
+.auth-label { display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: var(--muted); font-weight: 600; }
+.auth-label input {
+  padding: 10px 12px; border-radius: 8px; border: 1px solid var(--line);
+  background: var(--panel-2); color: var(--text); font-size: 15px;
+}
+.auth-label input:focus { outline: none; border-color: var(--accent); }
+.auth-btn { width: 100%; padding: 11px; font-size: 15px; text-align: center; text-decoration: none; }
+.auth-error {
+  margin: 0; padding: 8px 10px; border-radius: 8px; font-size: 13px;
+  background: rgba(255,93,108,.12); color: var(--red); border: 1px solid rgba(255,93,108,.3);
+}
+.auth-hint, .auth-note { margin: 2px 0 0; }
+.auth-note { color: var(--accent-2); }
+
+/* Account chip + sign-out in the top bar */
+.account-chip { display: inline-flex; align-items: center; gap: 8px; }
+.account-chip .acct-name { font-weight: 700; font-size: 13px; color: var(--text); }
+.account-chip .acct-role {
+  font-size: 11px; font-weight: 700; padding: 1px 8px; border-radius: 999px;
+  background: var(--panel-2); border: 1px solid var(--line); color: var(--muted);
+}
+
+/* Student fixed-name (no picker) */
+.student-name {
+  font-weight: 700; font-size: 14px; padding: 6px 12px;
+  background: var(--panel-2); border: 1px solid var(--line); border-radius: 999px;
+}
+
+/* Admin: coach access-grant cards */
+.grant-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; }
+.grant-card { background: var(--panel-2); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; }
+.grant-head { margin-bottom: 8px; }
+.grant-boxes { display: flex; flex-direction: column; gap: 6px; }
+.grant-box { display: flex; align-items: center; gap: 8px; font-size: 13px; cursor: pointer; }

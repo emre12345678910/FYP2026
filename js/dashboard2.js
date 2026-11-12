@@ -18,6 +18,10 @@ import {
 import {
   QUESTIONNAIRES, scoreRestq, scorePoms, scoreTsci, scoreSms,
 } from './psych.js?v=19';
+import {
+  ensureSeedAdmin, currentUser, renderLogin, accountChip, bindAccountChip,
+} from './login.js?v=19';
+import { visibleAthleteIds as _vids } from './auth.js?v=19';
 
 const root = document.getElementById('app');
 // tab: 'physio' | 'psych' ; physioSub: 'daily' | 'training' | 'pain'
@@ -27,8 +31,17 @@ let state = {
   trendsCat: 'psych', trendsSub: 'all', trendsPhysioSub: 'all',
   selectedAthlete: null, rosterFilter: 'All', selectedMentalLog: null,
 };
+let AUTH = null; // signed-in user
 
 function athleteById(id) { return getAthletes().find((a) => a.id === id); }
+
+// Athletes the signed-in coach/admin may view (admin → all; coach → granted).
+function scopedAthletes() {
+  const all = getAthletes();
+  const ids = _vids(AUTH);
+  if (ids === null) return all;
+  return all.filter((a) => ids.includes(a.id));
+}
 function syncBadge() {
   const b = activeBackend();
   if (b === 'firebase') return '<span class="sync-badge on">☁ Cloud sync on</span>';
@@ -54,8 +67,19 @@ function effectiveTier(athlete, checkins) {
 
 /* --------------------------------- Shell --------------------------------- */
 function render() {
-  const athletes = getAthletes();
-  if (!state.selectedAthlete && athletes.length) state.selectedAthlete = athletes[0].id;
+  const athletes = scopedAthletes();
+  if ((!state.selectedAthlete || !athletes.some((a) => a.id === state.selectedAthlete)) && athletes.length) {
+    state.selectedAthlete = athletes[0].id;
+  }
+
+  const isAdmin = AUTH && AUTH.role === 'admin';
+  const adminLink = isAdmin ? '<a class="ghost" href="admin.html" title="Admin panel">🛠 Admin</a>' : '';
+  const dataActions = isAdmin
+    ? `<button class="ghost" id="export-data" title="Download all data as a file">⬇ Export</button>
+       <button class="ghost" id="import-data" title="Load data from an exported file">⬆ Import</button>
+       <input type="file" accept="application/json,.json" id="import-file" hidden>
+       <a class="ghost" href="index.html" title="Open the athlete Daily Log">✍️ Athlete Log →</a>`
+    : '';
 
   root.innerHTML = `
     <header class="topbar">
@@ -73,10 +97,9 @@ function render() {
       </nav>
       <div class="tz">🕒 SGT (UTC+8) · ${syncBadge()}</div>
       <div class="data-actions">
-        <button class="ghost" id="export-data" title="Download all data as a file">⬇ Export</button>
-        <button class="ghost" id="import-data" title="Load data from an exported file">⬆ Import</button>
-        <input type="file" accept="application/json,.json" id="import-file" hidden>
-        <a class="ghost" href="index.html" title="Open the athlete Daily Log">✍️ Athlete Log →</a>
+        ${dataActions}
+        ${adminLink}
+        ${accountChip(AUTH)}
       </div>
     </header>
     <main>
@@ -88,6 +111,7 @@ function render() {
   `;
 
   bindShell();
+  bindAccountChip(root, showLogin);
 }
 
 function bindShell() {
@@ -187,9 +211,9 @@ function roster(athletes) {
 
 /* -------------------------------- Detail -------------------------------- */
 function detail() {
-  const athletes = getAthletes();
-  const a = athleteById(state.selectedAthlete) || athletes[0];
-  if (!a) return '<p class="muted">No athletes yet. Add athletes in the Input app.</p>';
+  const athletes = scopedAthletes();
+  const a = athletes.find((x) => x.id === state.selectedAthlete) || athletes[0];
+  if (!a) return `<p class="muted">${AUTH && AUTH.role === 'coach' ? 'No athletes have been assigned to you yet. Ask your admin to grant access.' : 'No athletes yet. Add athletes in the Input app.'}</p>`;
   const checkins = checkinsForAthlete(a.id);
   const status = effectiveTier(a, checkins);
   const auto = readinessTier(checkins);
@@ -856,17 +880,43 @@ function psychPanel(a) {
 }
 
 /* ------------------------------ Bootstrap ------------------------------- */
-async function boot() {
-  // Paint immediately from the local cache; connect to the backend in the
-  // background. The dashboard is read-only, so re-rendering on new data is safe.
+function showLogin() {
+  AUTH = null;
+  renderLogin(root, (user) => { AUTH = user; afterLogin(); });
+}
+
+// The dashboard is for coaches/admins. A student who lands here is redirected
+// to the athlete input app.
+function afterLogin() {
+  if (AUTH && AUTH.role === 'student') {
+    root.innerHTML = `<div class="auth-wrap"><div class="auth-card">
+      <div class="auth-brand"><span class="logo">🥊</span><h1>Eastside FC</h1></div>
+      <p class="auth-sub">This is the coach dashboard.</p>
+      <p class="muted">Athletes log and view their own data in the input app.</p>
+      <a class="primary auth-btn" href="index.html">Go to my athlete app →</a>
+      <button class="ghost" id="logout-btn" style="margin-top:10px">Sign out</button>
+    </div></div>`;
+    bindAccountChip(root, showLogin);
+    return;
+  }
   render();
+  if (isShared()) {
+    pullState().then((changed) => { if (changed) render(); }).catch(() => {});
+    startSync(() => { if (AUTH && AUTH.role !== 'student') render(); });
+  }
+}
+
+async function boot() {
   try {
     await resolveBackend();
-    render(); // reflect the resolved sync badge
-    if (isShared()) {
-      pullState().then((changed) => { if (changed) render(); }).catch(() => {});
-      startSync(render);
-    }
+    if (isShared()) { try { await pullState(); } catch (e) { /* offline */ } }
   } catch (e) { /* stay on local cache */ }
+
+  await ensureSeedAdmin();
+
+  const user = currentUser();
+  if (!user) { showLogin(); return; }
+  AUTH = user;
+  afterLogin();
 }
 boot();
