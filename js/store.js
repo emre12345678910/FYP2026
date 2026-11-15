@@ -1,7 +1,7 @@
 // store.js — persistence + Singapore Time + core domain logic
 // Zero dependencies. Data persists in localStorage.
 
-import { CONFIG, pushKey, pushAll, pullState, startSync, isShared, resolveBackend, activeBackend, KEYS } from './api.js?v=19';
+import { CONFIG, pushKey, pushAll, pullState, startSync, isShared, resolveBackend, activeBackend, KEYS } from './api.js?v=20';
 
 export const SGT = 'Asia/Singapore';
 const STORAGE_KEY = 'eastside_fc_checkins_v1';
@@ -191,6 +191,8 @@ export function saveCheckin(input, athlete) {
     srpe: input.srpe ?? null,
     intensity_level: input.intensity_level || null,
     duration_mins: input.duration_mins ?? null,
+    train_start: input.train_start || null, // HH:MM (SGT wall clock)
+    train_end: input.train_end || null,     // HH:MM (SGT wall clock)
     workload,
     pre_weight_kg: input.pre_weight_kg ?? null,
     post_weight_kg: input.post_weight_kg ?? null,
@@ -381,6 +383,13 @@ export function getHydrationToday(athleteId) {
   const day = sgtNow().date;
   const store = getHydrationStore();
   return normHydration(store[`${athleteId}|${day}`]);
+}
+
+// Returns the hydration record for an athlete on a specific SGT day (YYYY-MM-DD),
+// with per-tap timestamps so callers can bucket fluid into time windows.
+export function getHydrationForDay(athleteId, sgtDayKey) {
+  const store = getHydrationStore();
+  return normHydration(store[`${athleteId}|${sgtDayKey}`]);
 }
 
 // Adds one bottle (bottleMl) to today's intake, timestamping the tap (SGT).
@@ -604,6 +613,19 @@ export function sleepMinutesBetween(startHHMM, endHHMM) {
   let mins = (eh * 60 + em) - (sh * 60 + sm);
   if (mins <= 0) mins += 24 * 60; // crossed midnight
   return mins;
+}
+
+// Minutes between a training start and end (HH:MM). Unlike sleep this is NOT
+// overnight-aware: a session is same-day, so if end <= start we treat it as an
+// invalid entry and return null (prevents a reversed/mis-typed time from
+// inflating workload = sRPE × minutes to ~1440).
+export function trainMinutesBetween(startHHMM, endHHMM) {
+  if (!startHHMM || !endHHMM) return null;
+  const [sh, sm] = startHHMM.split(':').map(Number);
+  const [eh, em] = endHHMM.split(':').map(Number);
+  if ([sh, sm, eh, em].some((n) => Number.isNaN(n))) return null;
+  const mins = (eh * 60 + em) - (sh * 60 + sm);
+  return mins > 0 ? mins : null;
 }
 
 // Formats a total minute count as "7 h 30 min" (or "45 min" / "8 h").

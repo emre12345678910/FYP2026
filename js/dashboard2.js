@@ -6,18 +6,18 @@
 import {
   getAthletes, checkinsForAthlete, mentalLogsForAthlete,
   bpCategory, formatHoursMinutes, formatSgt, sgtDay, sgtWeek, sgtNow,
-  hydrationMlForDay, hydrationGoalMl,
+  hydrationMlForDay, hydrationGoalMl, getHydrationForDay, lastBodyMass,
   getOverride, exportData, importData, pullState, startSync, isShared, resolveBackend, activeBackend,
-} from './store.js?v=19';
-import { evaluateAthlete, readinessTier, evaluateReadinessStatus, tierMeta } from './alerts.js?v=19';
+} from './store.js?v=20';
+import { evaluateAthlete, readinessTier, evaluateReadinessStatus, tierMeta } from './alerts.js?v=20';
 import {
   srpeChart, painChart, sleepChart, hydrationWeekChart, bpWeekChart, bodyMassWeekChart,
   restqProfileChart, restqBalanceChart, pomsProfileChart, pomsTmdChart,
   tsciChart, smsProfileChart, smsRaiChart, weeklyTrendChart,
-} from './charts.js?v=19';
+} from './charts.js?v=20';
 import {
   QUESTIONNAIRES, scoreRestq, scorePoms, scoreTsci, scoreSms,
-} from './psych.js?v=19';
+} from './psych.js?v=20';
 
 const root = document.getElementById('app');
 // tab: 'physio' | 'psych' ; physioSub: 'daily' | 'training' | 'pain'
@@ -266,6 +266,75 @@ function hydrationInsight(a) {
   };
 }
 
+// Fluid-intake guideline evaluation for the most recent training session that
+// has a logged start/end clock (from the athlete's Training log). Two checks:
+//   • Pre-exercise : 5–10 ml fluid per kg body weight, 2–3 h before training.
+//   • During       : 150–250 ml every 15–20 min while training.
+// Fluid is bucketed from the hydration store's per-tap timestamps (entries[].utc)
+// into the pre-window [start−3h, start−2h] and the during-window [start, end].
+// Returns null when no training session with a start/end clock exists.
+function fluidGuidelineInsight(a, checkins) {
+  // Most recent check-in that has both a training window AND some session time.
+  const sessions = checkins.filter((c) => c.train_start && c.train_end);
+  if (!sessions.length) return null;
+  const s = sessions[sessions.length - 1];
+  const dayKey = s.sgtDay || sgtDay(s.timestampUtc); // SGT calendar day of the session
+
+  // Convert an SGT wall-clock "HH:MM" on that day to a UTC instant (ms).
+  const sgtToUtcMs = (hhmm) => Date.parse(`${dayKey}T${hhmm}:00+08:00`);
+  const startMs = sgtToUtcMs(s.train_start);
+  const endMs = sgtToUtcMs(s.train_end);
+  if (Number.isNaN(startMs) || Number.isNaN(endMs) || endMs <= startMs) return null;
+  const durationMins = Math.round((endMs - startMs) / 60000);
+
+  // Body weight for the per-kg pre-exercise target (freshest logged, else profile).
+  const weightKg = lastBodyMass(a.id) ?? (a.currentWeight != null ? Number(a.currentWeight) : null);
+
+  // All hydration taps logged on the session's SGT day, with UTC timestamps.
+  const taps = getHydrationForDay(a.id, dayKey).entries || [];
+  const mlInWindow = (fromMs, toMs) => taps.reduce((sum, t) => {
+    const ms = Date.parse(t.utc);
+    return (!Number.isNaN(ms) && ms >= fromMs && ms < toMs) ? sum + (t.ml || 0) : sum;
+  }, 0);
+
+  // --- Pre-exercise: 5–10 ml/kg, 2–3 h before start ---
+  let pre = null;
+  if (weightKg) {
+    const preMl = mlInWindow(startMs - 3 * 3600000, startMs - 2 * 3600000);
+    const lo = Math.round(weightKg * 5);   // 5 ml/kg lower bound
+    const hi = Math.round(weightKg * 10);  // 10 ml/kg upper bound
+    const ok = preMl >= lo;
+    pre = {
+      ok,
+      status: ok ? 'Hydrated' : 'Underhydrated',
+      cls: ok ? 'green' : 'red',
+      detail: `${preMl} ml in the 2–3 h before training · target ${lo}–${hi} ml (5–10 ml/kg × ${weightKg} kg)`,
+    };
+  } else {
+    pre = { ok: null, status: 'No weight', cls: 'muted',
+      detail: 'Log a body mass to evaluate the 5–10 ml/kg pre-exercise target.' };
+  }
+
+  // --- During-exercise: 150–250 ml per 15–20 min ---
+  const duringMl = mlInWindow(startMs, endMs);
+  // Expected band across the whole session, from the per-interval guideline.
+  const lo = Math.round((durationMins / 20) * 150); // conservative lower bound
+  const hi = Math.round((durationMins / 15) * 250); // upper bound
+  const okD = duringMl >= lo;
+  const during = {
+    ok: okD,
+    status: okD ? 'Hydrated' : 'Underhydrated',
+    cls: okD ? 'green' : 'red',
+    detail: `${duringMl} ml during a ${formatHoursMinutes(durationMins)} session · target ${lo}–${hi} ml (150–250 ml / 15–20 min)`,
+  };
+
+  return {
+    window: `${s.train_start}–${s.train_end}`,
+    dayLabel: dayKey.slice(5).replace('-', '/'),
+    pre, during,
+  };
+}
+
 // Sleep interpretation from the most recent overnight sleep.
 function sleepInsight(checkins) {
   const nights = checkins.filter((c) => c.sleep_type !== 'Nap' && c.sleep_hours != null);
@@ -320,11 +389,23 @@ function bpInsight(checkins) {
 // The big combined interpretation box for the Daily sub-tab.
 function dailyInsightBox(a, checkins) {
   const hyd = hydrationInsight(a);
+  const fluid = fluidGuidelineInsight(a, checkins);
   const slp = sleepInsight(checkins);
   const bm = bodyMassInsight(checkins);
   const bp = bpInsight(checkins);
 
   const row = (title, inner) => `<div class="insight-row"><div class="insight-k">${title}</div><div class="insight-v">${inner}</div></div>`;
+
+  // Pre-exercise / during-exercise fluid guideline rows (only when a training
+  // session with a start/end clock exists).
+  const fluidRows = fluid ? `
+    ${row('🥤 Pre-exercise fluid', `
+      <div><span class="tier ${fluid.pre.cls}">${esc(fluid.pre.status)}</span> <span class="muted small">· before the ${esc(fluid.window)} session (${esc(fluid.dayLabel)})</span></div>
+      <div class="muted small">${esc(fluid.pre.detail)}</div>`)}
+    ${row('💦 Exercise fluid', `
+      <div><span class="tier ${fluid.during.cls}">${esc(fluid.during.status)}</span> <span class="muted small">· during the ${esc(fluid.window)} session</span></div>
+      <div class="muted small">${esc(fluid.during.detail)}</div>`)}`
+    : row('🥤 Fluid timing', '<span class="muted">Log a training session with a start &amp; end time to evaluate pre- and during-exercise fluids.</span>');
 
   return `
   <section class="insight-box">
@@ -333,6 +414,7 @@ function dailyInsightBox(a, checkins) {
       <div><strong>${esc(hyd.dayLabel)}</strong> — <span class="tier ${hyd.cls}">${hyd.status}</span></div>
       <div class="muted small">That day: ${esc(hyd.yesterdayDetail)}</div>
       <div class="hydration-today-big">Today: ${esc(hyd.today)}</div>`)}
+    ${fluidRows}
     ${row('😴 Sleep', slp
       ? `<span class="tier ${slp.cls}">${slp.label}</span> <span class="muted small">· ${slp.hours} h latest night</span>`
       : '<span class="muted">No overnight sleep logged yet.</span>')}
@@ -572,6 +654,7 @@ function trainingPanel(a, checkins) {
         <td>${esc(formatSgt(c.timestampUtc))}</td>
         <td>${esc(c.intensity_level || '—')}</td>
         <td>${c.srpe ?? '—'}</td>
+        <td>${c.train_start && c.train_end ? esc(c.train_start + '–' + c.train_end) : '—'}</td>
         <td>${c.duration_mins ?? '—'}</td>
         <td>${c.workload ?? '—'}</td>
       </tr>`).join('');
@@ -591,8 +674,8 @@ function trainingPanel(a, checkins) {
     </div>
     <section class="panel"><h3>Training sessions — raw metrics</h3>
       <div class="table-wrap"><table class="data-table"><thead><tr>
-        <th>SGT</th><th>Intensity</th><th>sRPE</th><th>Dur</th><th>Workload</th>
-      </tr></thead><tbody>${rawRows || '<tr><td colspan="5" class="muted">No training data</td></tr>'}</tbody></table></div>
+        <th>SGT</th><th>Intensity</th><th>sRPE</th><th>Window</th><th>Dur</th><th>Workload</th>
+      </tr></thead><tbody>${rawRows || '<tr><td colspan="6" class="muted">No training data</td></tr>'}</tbody></table></div>
     </section>`;
 }
 

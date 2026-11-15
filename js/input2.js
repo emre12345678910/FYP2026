@@ -7,15 +7,15 @@
 import {
   getAthletes, addAthlete, updateAthlete, deleteAthlete, saveCheckin, saveMentalLog,
   checkinsForAthlete, mentalLogsForAthlete, lastBodyMass, hydrationMlForDay,
-  bpCategory, sleepHoursBetween, sleepMinutesBetween, formatHoursMinutes, formatSgt, sgtDay, sgtWeek,
+  bpCategory, sleepHoursBetween, sleepMinutesBetween, trainMinutesBetween, formatHoursMinutes, formatSgt, sgtDay, sgtWeek,
   getHydrationToday, addBottle, removeBottle, DEFAULT_BOTTLE_ML,
   hydrationGoalMl, exerciseMinutesToday,
   exportData, importData, pullState, startSync, isShared, resolveBackend, activeBackend,
   MASS_GOALS, getMassGoal, massGoalStatus,
   BP_TIMINGS, INTENSITY_LEVELS, PAIN_SYMPTOMS,
-} from './store.js?v=19';
-import { QUESTIONNAIRES, itemId } from './psych.js?v=19';
-import { hydrationWeekChart, bpWeekChart, bodyMassWeekChart, sleepChart } from './charts.js?v=19';
+} from './store.js?v=20';
+import { QUESTIONNAIRES, itemId } from './psych.js?v=20';
+import { hydrationWeekChart, bpWeekChart, bodyMassWeekChart, sleepChart } from './charts.js?v=20';
 
 const root = document.getElementById('app');
 // section = top-level ('physio' | 'mental'); physioSub = 'daily' | 'training'
@@ -256,8 +256,19 @@ function trainingLog(a) {
           <label class="dl-field">RPE (1–10)
             <select name="srpe"><option value="">—</option>${Array.from({ length: 10 }, (_, i) => i + 1).map((n) => `<option value="${n}">${n}</option>`).join('')}</select>
           </label>
-          <label class="dl-field">Duration (min)<input type="number" min="0" name="duration_mins" id="duration-mins" placeholder="e.g. 60"></label>
         </div>
+
+        <!-- Training clock: start / end → computed duration (like the Sleep tracker) -->
+        <div class="dl-two">
+          <label class="dl-field">Train Start<div class="time-row"><input type="time" name="train_start" id="train-start"><button type="button" class="ghost train-now" data-target="train-start">now</button></div></label>
+          <label class="dl-field">Train End<div class="time-row"><input type="time" name="train_end" id="train-end"><button type="button" class="ghost train-now" data-target="train-end">now</button></div></label>
+        </div>
+        <div class="dl-total-row">
+          <span class="dl-field-label">Session Duration</span>
+          <span class="dl-total-value" id="train-duration-display">—</span>
+        </div>
+        <!-- duration_mins is computed from the clock; hidden so it still submits. -->
+        <input type="hidden" name="duration_mins" id="duration-mins">
 
         <!-- Pain & Symptoms nested under Training -->
         <div class="dl-subsection">
@@ -828,6 +839,35 @@ function bindDaily(a) {
 }
 
 function bindTraining(a) {
+  // Training clock: compute session duration from start/end (mirrors sleep).
+  const trainStart = root.querySelector('#train-start');
+  const trainEnd = root.querySelector('#train-end');
+  const durationField = root.querySelector('#duration-mins');
+  const trainDisp = root.querySelector('#train-duration-display');
+  function recalcTraining() {
+    if (!trainStart || !trainEnd) return;
+    const mins = trainMinutesBetween(trainStart.value, trainEnd.value);
+    if (mins != null) {
+      durationField.value = mins;
+      trainDisp.textContent = formatHoursMinutes(mins);
+      trainDisp.classList.remove('short');
+    } else {
+      durationField.value = '';
+      // If both times are set but invalid (end ≤ start), warn; else just reset.
+      const both = trainStart.value && trainEnd.value;
+      trainDisp.textContent = both ? 'End must be after start' : '—';
+      trainDisp.classList.toggle('short', !!both);
+    }
+  }
+  root.querySelectorAll('.train-now').forEach((b) => b.addEventListener('click', () => {
+    const target = root.querySelector('#' + b.dataset.target);
+    const now = new Date();
+    target.value = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+    recalcTraining();
+  }));
+  if (trainStart) trainStart.addEventListener('change', recalcTraining);
+  if (trainEnd) trainEnd.addEventListener('change', recalcTraining);
+
   // History links
   root.querySelectorAll('[data-history]').forEach((lnk) =>
     lnk.addEventListener('click', (e) => { e.preventDefault(); openHistory(lnk.dataset.history, a); }));
@@ -841,6 +881,7 @@ function bindTraining(a) {
     saveCheckin({
       athleteId: a.id,
       srpe: num('srpe'), intensity_level: str('intensity_level') || null, duration_mins: num('duration_mins'),
+      train_start: str('train_start') || null, train_end: str('train_end') || null,
       pain_score: num('pain_score'), pain_location: str('pain_location'), pain_symptoms: f.getAll('pain_symptom'),
       pain_description: str('pain_description') || null, pain_actions: str('pain_actions') || null, pain_period: str('pain_period') || null,
     }, a);
