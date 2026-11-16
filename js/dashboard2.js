@@ -8,16 +8,16 @@ import {
   bpCategory, formatHoursMinutes, formatSgt, sgtDay, sgtWeek, sgtNow,
   hydrationMlForDay, hydrationGoalMl, getHydrationForDay, lastBodyMass,
   getOverride, exportData, importData, pullState, startSync, isShared, resolveBackend, activeBackend,
-} from './store.js?v=20';
-import { evaluateAthlete, readinessTier, evaluateReadinessStatus, tierMeta } from './alerts.js?v=20';
+} from './store.js?v=21';
+import { evaluateAthlete, readinessTier, evaluateReadinessStatus, tierMeta } from './alerts.js?v=21';
 import {
   srpeChart, painChart, sleepChart, hydrationWeekChart, bpWeekChart, bodyMassWeekChart,
   restqProfileChart, restqBalanceChart, pomsProfileChart, pomsTmdChart,
   tsciChart, smsProfileChart, smsRaiChart, weeklyTrendChart,
-} from './charts.js?v=20';
+} from './charts.js?v=21';
 import {
   QUESTIONNAIRES, scoreRestq, scorePoms, scoreTsci, scoreSms,
-} from './psych.js?v=20';
+} from './psych.js?v=21';
 
 const root = document.getElementById('app');
 // tab: 'physio' | 'psych' ; physioSub: 'daily' | 'training' | 'pain'
@@ -396,16 +396,25 @@ function dailyInsightBox(a, checkins) {
 
   const row = (title, inner) => `<div class="insight-row"><div class="insight-k">${title}</div><div class="insight-v">${inner}</div></div>`;
 
-  // Pre-exercise / during-exercise fluid guideline rows (only when a training
-  // session with a start/end clock exists).
-  const fluidRows = fluid ? `
-    ${row('🥤 Pre-exercise fluid', `
-      <div><span class="tier ${fluid.pre.cls}">${esc(fluid.pre.status)}</span> <span class="muted small">· before the ${esc(fluid.window)} session (${esc(fluid.dayLabel)})</span></div>
-      <div class="muted small">${esc(fluid.pre.detail)}</div>`)}
-    ${row('💦 Exercise fluid', `
-      <div><span class="tier ${fluid.during.cls}">${esc(fluid.during.status)}</span> <span class="muted small">· during the ${esc(fluid.window)} session</span></div>
-      <div class="muted small">${esc(fluid.during.detail)}</div>`)}`
-    : row('🥤 Fluid timing', '<span class="muted">Log a training session with a start &amp; end time to evaluate pre- and during-exercise fluids.</span>');
+  // Fluid-timing guideline, shown as a sub-block UNDER the Hydration row:
+  //   • Pre-exercise : 5–10 ml/kg in the 2–3 h before training.
+  //   • During       : 150–250 ml per 15–20 min while training.
+  // Only shown when a training session with a start/end clock exists.
+  const fluidSub = fluid ? `
+      <div class="fluid-sub">
+        <div class="fluid-sub-head">🥤 Fluid timing <span class="muted small">· ${esc(fluid.window)} session (${esc(fluid.dayLabel)})</span></div>
+        <div class="fluid-sub-item">
+          <span class="fluid-sub-k">Pre-exercise</span>
+          <span class="tier ${fluid.pre.cls}">${esc(fluid.pre.status)}</span>
+          <div class="muted small fluid-sub-detail">${esc(fluid.pre.detail)}</div>
+        </div>
+        <div class="fluid-sub-item">
+          <span class="fluid-sub-k">During exercise</span>
+          <span class="tier ${fluid.during.cls}">${esc(fluid.during.status)}</span>
+          <div class="muted small fluid-sub-detail">${esc(fluid.during.detail)}</div>
+        </div>
+      </div>`
+    : `<div class="fluid-sub"><div class="muted small">🥤 Fluid timing: log a training session with a start &amp; end time to evaluate pre- and during-exercise fluids.</div></div>`;
 
   return `
   <section class="insight-box">
@@ -413,8 +422,8 @@ function dailyInsightBox(a, checkins) {
     ${row('💧 Hydration', `
       <div><strong>${esc(hyd.dayLabel)}</strong> — <span class="tier ${hyd.cls}">${hyd.status}</span></div>
       <div class="muted small">That day: ${esc(hyd.yesterdayDetail)}</div>
-      <div class="hydration-today-big">Today: ${esc(hyd.today)}</div>`)}
-    ${fluidRows}
+      <div class="hydration-today-big">Today: ${esc(hyd.today)}</div>
+      ${fluidSub}`)}
     ${row('😴 Sleep', slp
       ? `<span class="tier ${slp.cls}">${slp.label}</span> <span class="muted small">· ${slp.hours} h latest night</span>`
       : '<span class="muted">No overnight sleep logged yet.</span>')}
