@@ -754,8 +754,10 @@ a.ghost { text-decoration: none; display: inline-flex; align-items: center; }
 .cal-goal-label { font-size: 13px; font-weight: 700; color: var(--text); }
 .cal-target-num { width: 110px; background: #0e141b; color: var(--text); border: 1px solid var(--line); border-radius: 8px; padding: 9px 10px; font-size: 15px; font-family: inherit; }
 .cal-goal-reset { font-size: 12px; padding: 7px 10px; }
-.grams-input { display: flex; align-items: center; gap: 6px; }
+.grams-row { flex-direction: column; align-items: flex-start; gap: 8px; }
+.grams-input { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 .grams-input input { width: 90px; background: #0e141b; color: var(--text); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; font-size: 15px; font-family: inherit; }
+.grams-step { padding: 6px 10px; }
 .cal-scale { display: flex; justify-content: space-between; align-items: center; }
 .cal-scale span:nth-child(2) { text-align: center; }
 .food-search { background: #0e141b; color: var(--text); border: 1px solid var(--line); border-radius: 8px; padding: 9px 12px; font-size: 14px; font-family: inherit; width: 100%; }

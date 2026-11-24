@@ -16,9 +16,9 @@ import {
   addFoodItem, removeFoodItem, setCalorieTarget, setManualKcal,
   calorieTargetInfo, calorieWeekSeries,
   BP_TIMINGS, INTENSITY_LEVELS, PAIN_SYMPTOMS,
-} from './store.js?v=26';
-import { QUESTIONNAIRES, itemId } from './psych.js?v=26';
-import { hydrationWeekChart, bpWeekChart, bodyMassWeekChart, sleepChart, calorieWeekChart } from './charts.js?v=26';
+} from './store.js?v=27';
+import { QUESTIONNAIRES, itemId } from './psych.js?v=27';
+import { hydrationWeekChart, bpWeekChart, bodyMassWeekChart, sleepChart, calorieWeekChart } from './charts.js?v=27';
 
 const root = document.getElementById('app');
 // section = top-level ('physio' | 'mental'); physioSub = 'daily' | 'training'
@@ -485,7 +485,7 @@ function nutritionCard(a) {
 
   const foodButtons = filtered.length
     ? filtered.map(({ fd, i }) =>
-        `<button type="button" class="food-db-item ${i === selectedFood ? 'sel' : ''}" data-food-pick="${i}">${esc(fd.name)} · ${fd.kcal}</button>`).join('')
+        `<button type="button" class="food-db-item ${i === selectedFood ? 'sel' : ''}" data-food-pick="${i}">${esc(fd.name)} · ${fd.per100g != null ? `${fd.per100g} /100g ⚖️` : fd.kcal}</button>`).join('')
     : '<p class="muted small">No foods match your search.</p>';
 
   const portionBtns = [0.5, 1, 1.5, 2].map((p) =>
@@ -564,12 +564,20 @@ function nutritionCard(a) {
       <div class="nutri-col">
         <div class="nutri-col-head"><h4>HPB Calorie Estimator</h4><span class="muted small">SG Food Database</span></div>
         <input type="text" id="food-search" class="food-search" placeholder="🔍 Search foods (e.g. rice, chicken, laksa)" value="${esc(search || '')}">
+        <div class="muted small">⚖️ items are weighed by grams; others use a portion multiplier.</div>
         <div class="food-db">${foodButtons}</div>
         ${byGram
-          ? `<div class="portion-row"><label class="muted small" for="food-grams">Weight</label>
-               <div class="grams-input"><input type="number" id="food-grams" min="0" step="10" value="${grams}"> <span class="muted small">g</span></div></div>`
-          : `<div class="portion-row"><span class="muted small">Portion multiplier</span><div class="portion-btns">${portionBtns}</div></div>`}
-        <div class="food-sel-preview">${esc(sel.name)} ${byGram ? `(${grams} g)` : `(${portion}x)`} <strong>+${kcalFmt(selKcal)} kcal</strong></div>
+          ? `<div class="portion-row grams-row">
+               <label class="dl-field-label" for="food-grams">Weight (g)</label>
+               <div class="grams-input">
+                 <button type="button" class="portion-btn grams-step" data-grams-step="-25">−25</button>
+                 <input type="number" id="food-grams" min="0" step="10" value="${grams}">
+                 <button type="button" class="portion-btn grams-step" data-grams-step="25">+25</button>
+                 <span class="muted small">g = ${kcalFmt(sel.per100g)}/100g</span>
+               </div>
+             </div>`
+          : `<div class="portion-row"><span class="dl-field-label">Portion multiplier</span><div class="portion-btns">${portionBtns}</div></div>`}
+        <div class="food-sel-preview">${esc(sel.name)} ${byGram ? `· ${grams} g` : `· ${portion}x`} <strong>+${kcalFmt(selKcal)} kcal</strong></div>
         <button type="button" class="primary food-estimate-add" id="food-estimate-add">Add to Food Log</button>
       </div>
     </div>` : ''}
@@ -1023,6 +1031,13 @@ function bindNutrition(a) {
     const again = root.querySelector('#food-grams');
     if (again) { again.focus(); try { again.setSelectionRange(caret, caret); } catch { /* noop */ } }
   });
+  // ±25 g stepper buttons next to the grams box.
+  root.querySelectorAll('[data-grams-step]').forEach((b) => b.addEventListener('click', () => {
+    const sel = HPB_FOODS[state.nutri.selectedFood] || HPB_FOODS[0];
+    const cur = state.nutri.grams != null ? state.nutri.grams : (sel.grams || 100);
+    state.nutri.grams = Math.max(0, cur + Number(b.dataset.gramsStep || 0));
+    render();
+  }));
 
   // "Add to Food Log": log the selected food. Weigh-by-gram foods are scaled
   // from per100g and noted with the gram amount; others use the portion.
