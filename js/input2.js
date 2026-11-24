@@ -12,13 +12,13 @@ import {
   hydrationGoalMl, exerciseMinutesToday,
   exportData, importData, pullState, startSync, isShared, resolveBackend, activeBackend,
   MASS_GOALS, getMassGoal, massGoalStatus,
-  HPB_FOODS, maintenanceKcal, getNutritionToday, nutritionKcalToday,
-  addFoodItem, removeFoodItem, setCalorieTarget,
+  HPB_FOODS, maintenanceKcal, getNutritionToday, nutritionKcalToday, nutritionFoodKcalToday,
+  addFoodItem, removeFoodItem, setCalorieTarget, setManualKcal,
   calorieTargetInfo, calorieWeekSeries,
   BP_TIMINGS, INTENSITY_LEVELS, PAIN_SYMPTOMS,
-} from './store.js?v=24';
-import { QUESTIONNAIRES, itemId } from './psych.js?v=24';
-import { hydrationWeekChart, bpWeekChart, bodyMassWeekChart, sleepChart, calorieWeekChart } from './charts.js?v=24';
+} from './store.js?v=25';
+import { QUESTIONNAIRES, itemId } from './psych.js?v=25';
+import { hydrationWeekChart, bpWeekChart, bodyMassWeekChart, sleepChart, calorieWeekChart } from './charts.js?v=25';
 
 const root = document.getElementById('app');
 // section = top-level ('physio' | 'mental'); physioSub = 'daily' | 'training'
@@ -26,7 +26,7 @@ const root = document.getElementById('app');
 //   show (food log + estimator visible), portion multiplier, selected HPB food.
 let state = {
   section: 'physio', physioSub: 'daily', selectedAthlete: null,
-  nutri: { show: true, portion: 1, selectedFood: 0 },
+  nutri: { show: true, portion: 1, selectedFood: 0, search: '' },
 };
 
 function athleteById(id) { return getAthletes().find((a) => a.id === id); }
@@ -443,21 +443,28 @@ function calorieBalance(logged, target) {
 
 function nutritionCard(a) {
   const today = getNutritionToday(a.id);
-  const logged = nutritionKcalToday(a.id);
+  const foodTotal = nutritionFoodKcalToday(a.id);   // from the food log only
+  const manual = today.manual || 0;                 // quick-entry (slider/number)
+  const consumed = foodTotal + manual;              // TOTAL consumed = food + manual
   // Training-load-based recommended goal for today (boxer kcal/kg guidelines).
   const info = calorieTargetInfo(a);
   const recommended = info.recommended;
   // Athlete's own override wins; otherwise use the training-based recommendation.
   const target = today.target != null ? today.target : recommended;
   const usingOverride = today.target != null && today.target !== recommended;
-  const bal = calorieBalance(logged, target);
+  const bal = calorieBalance(consumed, target);
 
-  // Slider bounds widen for heavy days (a 90kg boxer's heavy target can top
-  // 6,000 kcal). The slider sets the daily TARGET; the big number is logged.
-  const SLIDER_MIN = 1000;
-  const SLIDER_MAX = Math.max(4500, Math.ceil(((info.rangeHi || 4500) + 500) / 500) * 500);
+  // Slider = manual quick-entry (0 → a bit above target/recommended). It never
+  // subtracts logged food; it only adds a typed/dragged amount on top.
+  const SLIDER_MAX = Math.max(4500, Math.ceil(((info.rangeHi || 4500) + 1000) / 500) * 500);
 
-  const { show, portion, selectedFood } = state.nutri;
+  const { show, portion, selectedFood, search } = state.nutri;
+
+  // Filtered SG food database (search by name). Keep original indices so the
+  // picked item is stable regardless of the current filter.
+  const q = (search || '').trim().toLowerCase();
+  const filtered = HPB_FOODS.map((fd, i) => ({ fd, i }))
+    .filter(({ fd }) => !q || fd.name.toLowerCase().includes(q));
   const sel = HPB_FOODS[selectedFood] || HPB_FOODS[0];
   const selKcal = Math.round(sel.kcal * portion);
 
@@ -473,10 +480,12 @@ function nutritionCard(a) {
       </div>`).join('')
     : '<p class="muted small">No food logged yet today.</p>';
 
-  const foodButtons = HPB_FOODS.map((fd, i) =>
-    `<button type="button" class="food-db-item ${i === selectedFood ? 'sel' : ''}" data-food-pick="${i}">${esc(fd.name)} · ${fd.kcal}</button>`).join('');
+  const foodButtons = filtered.length
+    ? filtered.map(({ fd, i }) =>
+        `<button type="button" class="food-db-item ${i === selectedFood ? 'sel' : ''}" data-food-pick="${i}">${esc(fd.name)} · ${fd.kcal}</button>`).join('')
+    : '<p class="muted small">No foods match your search.</p>';
 
-  const portionBtns = [0.5, 1, 1.5].map((p) =>
+  const portionBtns = [0.5, 1, 1.5, 2].map((p) =>
     `<button type="button" class="portion-btn ${p === portion ? 'sel' : ''}" data-portion="${p}">${p}x</button>`).join('');
 
   const quickBtns = [
@@ -503,22 +512,31 @@ function nutritionCard(a) {
       <span class="muted small">Recommended: ${esc(rangeTxt)}</span>
     </div>
 
-    <!-- Calorie slider panel -->
+    <!-- Calories consumed panel -->
     <div class="cal-panel">
       <div class="cal-head">
-        <div><span class="cal-big">${kcalFmt(logged)}</span> <span class="cal-unit">kcal logged</span></div>
+        <div><span class="cal-big">${kcalFmt(consumed)}</span> <span class="cal-unit">kcal consumed</span></div>
         <div class="cal-balance">
           <span class="tier ${bal.cls}">${esc(bal.label)}</span>
           <div class="muted small">Target: ${kcalFmt(target)} kcal${bal.diff != null ? ` (${bal.diff > 0 ? '+' : ''}${kcalFmt(bal.diff)} kcal)` : ''}${usingOverride ? ' · custom' : ''}</div>
         </div>
       </div>
-      <input type="range" class="cal-slider" id="cal-slider" min="${SLIDER_MIN}" max="${SLIDER_MAX}" step="50" value="${Math.round(Math.min(SLIDER_MAX, Math.max(SLIDER_MIN, target)))}" aria-label="Daily calorie target">
-      <div class="cal-scale">
-        <span class="muted small">${kcalFmt(SLIDER_MIN)} kcal</span>
-        <span class="muted small">Recommended: ${kcalFmt(recommended)} kcal</span>
-        <span class="muted small">${kcalFmt(SLIDER_MAX)} kcal</span>
+
+      <!-- Quick-entry slider: a shortcut to add calories WITHOUT logging each
+           food. It adds on top of the food log and can't go below 0. -->
+      <label class="cal-slider-label" for="cal-slider">Quick-entry calories <span class="muted small">(type or drag — adds to your food log)</span></label>
+      <div class="cal-slider-row">
+        <input type="range" class="cal-slider" id="cal-slider" min="0" max="${SLIDER_MAX}" step="50" value="${Math.min(SLIDER_MAX, manual)}" aria-label="Quick-entry calories consumed">
+        <input type="number" class="cal-manual-num" id="cal-manual-num" min="0" step="10" value="${manual || ''}" placeholder="0" aria-label="Quick-entry calories">
+        <span class="muted small">kcal</span>
       </div>
-      <div class="cal-quick-row">${quickBtns}</div>
+      <div class="cal-breakdown muted small">Food log: ${kcalFmt(foodTotal)} kcal · Quick-entry: ${kcalFmt(manual)} kcal · <strong>Total: ${kcalFmt(consumed)} kcal</strong></div>
+
+      <!-- Target adjusters (the goal line, separate from consumed) -->
+      <div class="cal-target-row">
+        <span class="muted small">Adjust target</span>
+        <div class="cal-quick-row">${quickBtns}</div>
+      </div>
     </div>
 
     <button type="button" class="ghost nutri-toggle" id="nutri-toggle">${show ? 'Hide' : 'Show'} Food Log &amp; HPB Estimator</button>
@@ -535,18 +553,18 @@ function nutritionCard(a) {
         </div>
         <div class="food-list">${foodRows}</div>
         <div class="food-sum-row">
-          <span class="muted small">Sum: ${kcalFmt(logged)} kcal</span>
-          <button type="button" class="ghost" id="food-sync">Sync Food Total to Slider</button>
+          <span class="muted small">Food log sum: ${kcalFmt(foodTotal)} kcal</span>
         </div>
       </div>
 
       <!-- HPB Calorie Estimator -->
       <div class="nutri-col">
         <div class="nutri-col-head"><h4>HPB Calorie Estimator</h4><span class="muted small">SG Food Database</span></div>
+        <input type="text" id="food-search" class="food-search" placeholder="🔍 Search foods (e.g. rice, chicken, laksa)" value="${esc(search || '')}">
         <div class="food-db">${foodButtons}</div>
         <div class="portion-row"><span class="muted small">Portion multiplier</span><div class="portion-btns">${portionBtns}</div></div>
         <div class="food-sel-preview">${esc(sel.name)} (${portion}x) <strong>+${kcalFmt(selKcal)} kcal</strong></div>
-        <button type="button" class="primary food-estimate-add" id="food-estimate-add">Add to Food Log &amp; Update Slider</button>
+        <button type="button" class="primary food-estimate-add" id="food-estimate-add">Add to Food Log</button>
       </div>
     </div>` : ''}
   </section>`;
@@ -917,15 +935,22 @@ function bindNutrition(a) {
   const toggle = root.querySelector('#nutri-toggle');
   if (toggle) toggle.addEventListener('click', () => { state.nutri.show = !state.nutri.show; render(); });
 
-  // Calorie slider → sets today's target (NOT the logged total). Commit on
-  // release ('change') so dragging stays smooth and render() doesn't fight it.
+  // Quick-entry slider + number box → set the MANUAL calories (added on top of
+  // the food log; clamped ≥ 0 so it never subtracts logged food). The slider
+  // updates the number live while dragging and commits on release.
   const slider = root.querySelector('#cal-slider');
-  if (slider) {
-    slider.addEventListener('change', () => { setCalorieTarget(a.id, Number(slider.value)); render(); });
+  const manualNum = root.querySelector('#cal-manual-num');
+  if (slider && manualNum) {
+    slider.addEventListener('input', () => { manualNum.value = slider.value; });
+    slider.addEventListener('change', () => { setManualKcal(a.id, Number(slider.value)); render(); });
+    manualNum.addEventListener('change', () => {
+      const v = Math.max(0, Number(manualNum.value) || 0);
+      setManualKcal(a.id, v); render();
+    });
   }
 
-  // Quick target buttons: Recommended = reset to the training-load goal;
-  // ±N = nudge the current target.
+  // Quick TARGET buttons: Recommended = reset to the training-load goal;
+  // ±N = nudge the current target (these change the goal line, not consumed).
   root.querySelectorAll('.cal-quick').forEach((b) => b.addEventListener('click', () => {
     const recommended = calorieTargetInfo(a).recommended;
     const today = getNutritionToday(a.id);
@@ -935,7 +960,7 @@ function bindNutrition(a) {
     render();
   }));
 
-  // Manual food add (note + kcal).
+  // Manual food add (note + kcal) to the food log.
   const addBtn = root.querySelector('#food-add');
   if (addBtn) addBtn.addEventListener('click', () => {
     const note = root.querySelector('#food-note');
@@ -950,25 +975,30 @@ function bindNutrition(a) {
   root.querySelectorAll('[data-food-del]').forEach((b) =>
     b.addEventListener('click', () => { removeFoodItem(a.id, b.dataset.foodDel); render(); }));
 
-  // "Sync Food Total to Slider": set the target to the logged total.
-  const syncBtn = root.querySelector('#food-sync');
-  if (syncBtn) syncBtn.addEventListener('click', () => { setCalorieTarget(a.id, nutritionKcalToday(a.id)); render(); });
+  // SG food database search. Re-render on each keystroke, then restore focus +
+  // caret to the search box so typing is uninterrupted.
+  const searchBox = root.querySelector('#food-search');
+  if (searchBox) searchBox.addEventListener('input', () => {
+    const caret = searchBox.selectionStart;
+    state.nutri.search = searchBox.value;
+    render();
+    const again = root.querySelector('#food-search');
+    if (again) { again.focus(); try { again.setSelectionRange(caret, caret); } catch { /* noop */ } }
+  });
 
-  // HPB estimator: pick a food (selection is transient UI state).
+  // HPB estimator: pick a food (selection stored by original index).
   root.querySelectorAll('[data-food-pick]').forEach((b) =>
     b.addEventListener('click', () => { state.nutri.selectedFood = Number(b.dataset.foodPick); render(); }));
 
-  // Portion multiplier (0.5 / 1 / 1.5).
+  // Portion multiplier (0.5 / 1 / 1.5 / 2).
   root.querySelectorAll('[data-portion]').forEach((b) =>
     b.addEventListener('click', () => { state.nutri.portion = Number(b.dataset.portion); render(); }));
 
-  // "Add to Food Log & Update Slider": log the selected HPB food at the chosen
-  // portion, then sync the slider target to the new logged total.
+  // "Add to Food Log": log the selected HPB food at the chosen portion.
   const estAdd = root.querySelector('#food-estimate-add');
   if (estAdd) estAdd.addEventListener('click', () => {
     const sel = HPB_FOODS[state.nutri.selectedFood] || HPB_FOODS[0];
     addFoodItem(a.id, sel.name, sel.kcal, state.nutri.portion);
-    setCalorieTarget(a.id, nutritionKcalToday(a.id));
     render();
   });
 }

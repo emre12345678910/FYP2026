@@ -1,7 +1,7 @@
 // store.js — persistence + Singapore Time + core domain logic
 // Zero dependencies. Data persists in localStorage.
 
-import { CONFIG, pushKey, pushAll, pullState, startSync, isShared, resolveBackend, activeBackend, KEYS } from './api.js?v=24';
+import { CONFIG, pushKey, pushAll, pullState, startSync, isShared, resolveBackend, activeBackend, KEYS } from './api.js?v=25';
 
 export const SGT = 'Asia/Singapore';
 const STORAGE_KEY = 'eastside_fc_checkins_v1';
@@ -515,6 +515,35 @@ export const HPB_FOODS = [
   { name: 'Milo (hot, 1 cup)', kcal: 200 },
   { name: 'Coconut Water (1 cup)', kcal: 45 },
   { name: 'Isotonic Drink (500ml)', kcal: 130 },
+  // --- Raw ingredients & simple portions (per the stated amount) ---
+  { name: 'Rice, cooked (1 bowl, ~200g)', kcal: 260 },
+  { name: 'Rice, cooked (100g)', kcal: 130 },
+  { name: 'Brown rice, cooked (100g)', kcal: 112 },
+  { name: 'Chicken breast, cooked (100g)', kcal: 165 },
+  { name: 'Chicken thigh, cooked (100g)', kcal: 209 },
+  { name: 'Beef, lean cooked (100g)', kcal: 250 },
+  { name: 'Salmon, cooked (100g)', kcal: 206 },
+  { name: 'White fish, cooked (100g)', kcal: 110 },
+  { name: 'Egg, whole (per 1, ~50g)', kcal: 78 },
+  { name: 'Egg white (per 1)', kcal: 17 },
+  { name: 'Tofu, firm (100g)', kcal: 144 },
+  { name: 'Prawns, cooked (100g)', kcal: 99 },
+  { name: 'Pasta, cooked (100g)', kcal: 131 },
+  { name: 'Noodles, cooked (100g)', kcal: 138 },
+  { name: 'Bread, white (1 slice)', kcal: 75 },
+  { name: 'Potato, boiled (100g)', kcal: 87 },
+  { name: 'Sweet potato, boiled (100g)', kcal: 90 },
+  { name: 'Oats, dry (100g)', kcal: 389 },
+  { name: 'Broccoli, cooked (100g)', kcal: 35 },
+  { name: 'Mixed vegetables (100g)', kcal: 45 },
+  { name: 'Avocado (100g)', kcal: 160 },
+  { name: 'Olive oil (1 tbsp)', kcal: 119 },
+  { name: 'Peanut butter (1 tbsp)', kcal: 95 },
+  { name: 'Almonds (28g / ~23 nuts)', kcal: 164 },
+  { name: 'Milk, full cream (1 cup, 250ml)', kcal: 150 },
+  { name: 'Milk, low fat (1 cup, 250ml)', kcal: 105 },
+  { name: 'Cheese, cheddar (1 slice, ~20g)', kcal: 80 },
+  { name: 'Butter (1 tsp)', kcal: 34 },
 ];
 
 // Training-load-based calorie target for boxers (body weight × kcal/kg factor):
@@ -577,10 +606,17 @@ function getNutritionStore() {
   return raw ? JSON.parse(raw) : {};
 }
 
-// Normalises a stored record to { foods: [], target: number|null }.
+// Normalises a stored record to { foods: [], target: number|null, manual: 0 }.
+//   manual — a quick-entry calories number the athlete types/drags on the
+//            slider instead of logging each food. It ADDS to the food total;
+//            it never subtracts logged food.
 function normNutrition(rec) {
-  if (!rec) return { foods: [], target: null };
-  return { foods: Array.isArray(rec.foods) ? rec.foods : [], target: rec.target ?? null };
+  if (!rec) return { foods: [], target: null, manual: 0 };
+  return {
+    foods: Array.isArray(rec.foods) ? rec.foods : [],
+    target: rec.target ?? null,
+    manual: Math.max(0, Number(rec.manual) || 0),
+  };
 }
 
 // Today's (SGT) nutrition record for an athlete.
@@ -593,26 +629,40 @@ export function getNutritionForDay(athleteId, sgtDayKey) {
   return normNutrition(getNutritionStore()[`${athleteId}|${sgtDayKey}`]);
 }
 
-// Sum of today's logged food kcal for an athlete.
-export function nutritionKcalToday(athleteId) {
-  return getNutritionToday(athleteId).foods.reduce((s, f) => s + (Number(f.kcal) || 0), 0);
+// Sum of the food items logged for a record (no manual quick-entry).
+function foodKcal(rec) {
+  return rec.foods.reduce((s, f) => s + (Number(f.kcal) || 0), 0);
 }
 
-// Sum of logged food kcal for an athlete on a given SGT day.
+// Food-only kcal for today / a given day (the "Sum" of the food log).
+export function nutritionFoodKcalToday(athleteId) {
+  return foodKcal(getNutritionToday(athleteId));
+}
+export function nutritionFoodKcalForDay(athleteId, sgtDayKey) {
+  return foodKcal(getNutritionForDay(athleteId, sgtDayKey));
+}
+
+// TOTAL consumed kcal = logged food + the manual quick-entry. This is what the
+// big number, balance, dashboard and trend all use.
+export function nutritionKcalToday(athleteId) {
+  const rec = getNutritionToday(athleteId);
+  return foodKcal(rec) + (rec.manual || 0);
+}
 export function nutritionKcalForDay(athleteId, sgtDayKey) {
-  return getNutritionForDay(athleteId, sgtDayKey).foods.reduce((s, f) => s + (Number(f.kcal) || 0), 0);
+  const rec = getNutritionForDay(athleteId, sgtDayKey);
+  return foodKcal(rec) + (rec.manual || 0);
 }
 
 // Last-7-SGT-days calorie series for an athlete (for the weekly trend chart).
-// Each point: { key, label, logged, target } where target is the day's stored
-// override if present, else the training-load recommended goal for that day.
+// Each point: { key, label, logged, target } where logged = food + manual and
+// target is the day's stored override if present, else the recommended goal.
 export function calorieWeekSeries(athlete) {
   const out = [];
   const now = Date.now();
   for (let i = 6; i >= 0; i--) {
     const key = sgtDay(new Date(now - i * 86400000).toISOString());
     const rec = getNutritionForDay(athlete.id, key);
-    const logged = rec.foods.reduce((s, f) => s + (Number(f.kcal) || 0), 0);
+    const logged = foodKcal(rec) + (rec.manual || 0);
     const target = rec.target != null ? rec.target : calorieTargetInfo(athlete, key).recommended;
     out.push({ key, label: key.slice(5), logged, target });
   }
@@ -651,13 +701,28 @@ export function removeFoodItem(athleteId, foodId) {
   return { ...rec };
 }
 
-// Sets today's calorie target (the slider / maintenance goal) for an athlete.
+// Sets today's calorie TARGET (the goal line) for an athlete.
 export function setCalorieTarget(athleteId, target) {
   const day = sgtNow().date;
   const store = getNutritionStore();
   const key = `${athleteId}|${day}`;
   const rec = normNutrition(store[key]);
   rec.target = Math.max(0, Math.round(Number(target) || 0));
+  store[key] = rec;
+  persist(NUTRITION_KEY, JSON.stringify(store));
+  return { ...rec };
+}
+
+// Sets today's MANUAL quick-entry calories (the slider / number box) for an
+// athlete. This is a shortcut for when they don't want to log each food — it
+// ADDS to the food-log total and is clamped to ≥ 0, so it can never subtract
+// the calories they already logged.
+export function setManualKcal(athleteId, kcal) {
+  const day = sgtNow().date;
+  const store = getNutritionStore();
+  const key = `${athleteId}|${day}`;
+  const rec = normNutrition(store[key]);
+  rec.manual = Math.max(0, Math.round(Number(kcal) || 0));
   store[key] = rec;
   persist(NUTRITION_KEY, JSON.stringify(store));
   return { ...rec };
