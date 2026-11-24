@@ -16,9 +16,9 @@ import {
   addFoodItem, removeFoodItem, setCalorieTarget, setManualKcal,
   calorieTargetInfo, calorieWeekSeries,
   BP_TIMINGS, INTENSITY_LEVELS, PAIN_SYMPTOMS,
-} from './store.js?v=34';
-import { QUESTIONNAIRES, itemId } from './psych.js?v=34';
-import { hydrationWeekChart, bpWeekChart, bodyMassWeekChart, sleepChart, calorieWeekChart } from './charts.js?v=34';
+} from './store.js?v=35';
+import { QUESTIONNAIRES, itemId } from './psych.js?v=35';
+import { hydrationWeekChart, bpWeekChart, bodyMassWeekChart, sleepChart, calorieWeekChart } from './charts.js?v=35';
 
 const root = document.getElementById('app');
 // section = top-level ('physio' | 'mental'); physioSub = 'daily' | 'training'
@@ -465,13 +465,7 @@ function nutritionCard(a) {
   const target = today.target != null ? today.target : recommended;
   const usingOverride = today.target != null && today.target !== recommended;
   const bal = calorieBalance(consumed, target);
-  // Proximity colour + progress toward the goal (green as it nears, red if over).
-  const calColor = calorieColor(consumed, target);
   const pctOfGoal = target ? Math.round((consumed / target) * 100) : 0;
-
-  // Slider spans 0 → comfortably above both the recommended range and whatever
-  // has already been consumed (food + manual), so a big day still fits.
-  const SLIDER_MAX = Math.max(4500, Math.ceil((Math.max(info.rangeHi || 0, consumed) + 1000) / 500) * 500);
 
   const { show, portion, selectedFood, search } = state.nutri;
 
@@ -539,16 +533,13 @@ function nutritionCard(a) {
         ${usingOverride ? '<span class="tier small" style="background:rgba(78,161,255,.15);color:var(--blue)">custom</span>' : ''}
       </div>
 
-      <!-- Simple % of goal (no bar). -->
-      <div class="cal-pct">${pctOfGoal}% of goal</div>
+      <!-- Simple % of goal — colour goes greener toward the goal, red over. -->
+      <div class="cal-pct" style="color:${calorieColor(consumed, target)}">${pctOfGoal}% of goal</div>
 
-      <!-- Total-consumed slider. The handle = food log + quick-entry, so
-           logging a meal pushes it up. It can't go BELOW the food-log total,
-           so it can never subtract meals you've logged. Dragging/typing above
-           the food total adds the difference as quick-entry calories. -->
-      <label class="cal-slider-label" for="cal-slider">Total calories consumed <span class="muted small">(logged meals + quick-entry — drag or type to add)</span></label>
+      <!-- Total consumed = logged meals + quick-entry. Type a total here; it
+           can't go BELOW the logged-meal total, so it never subtracts meals. -->
+      <label class="cal-slider-label" for="cal-manual-num">Total calories consumed <span class="muted small">(logged meals + quick-entry — type to add)</span></label>
       <div class="cal-slider-row">
-        <input type="range" class="cal-slider" id="cal-slider" min="0" max="${SLIDER_MAX}" step="50" value="${Math.min(SLIDER_MAX, consumed)}" data-food-floor="${foodTotal}" style="accent-color:${calColor}" aria-label="Total calories consumed">
         <input type="number" class="cal-manual-num" id="cal-manual-num" min="${foodTotal}" step="10" value="${consumed || ''}" placeholder="0" data-food-floor="${foodTotal}" aria-label="Total calories consumed">
         <span class="muted small">kcal</span>
       </div>
@@ -972,21 +963,17 @@ function bindNutrition(a) {
   const toggle = root.querySelector('#nutri-toggle');
   if (toggle) toggle.addEventListener('click', () => { state.nutri.show = !state.nutri.show; render(); });
 
-  // Total-consumed slider + number box. The value = TOTAL consumed (logged
-  // meals + quick-entry). It can't drop below the food-log floor, and the
-  // quick-entry portion = max(0, value − foodFloor) — so logged meals always
-  // count and can never be subtracted.
-  const slider = root.querySelector('#cal-slider');
+  // Total-consumed number box. The value = TOTAL consumed (logged meals +
+  // quick-entry). It can't drop below the food-log floor, and the quick-entry
+  // portion = max(0, value − foodFloor) — so logged meals always count and
+  // can never be subtracted.
   const manualNum = root.querySelector('#cal-manual-num');
-  if (slider && manualNum) {
-    const floor = Number(slider.dataset.foodFloor) || 0;
-    const clamp = (v) => Math.max(floor, Number(v) || 0);     // never below logged meals
-    slider.addEventListener('input', () => {
-      if (Number(slider.value) < floor) slider.value = floor; // can't drag under the floor
-      manualNum.value = slider.value;
+  if (manualNum) {
+    const floor = Number(manualNum.dataset.foodFloor) || 0;
+    manualNum.addEventListener('change', () => {
+      const v = Math.max(floor, Number(manualNum.value) || 0);
+      setManualKcal(a.id, v - floor); render();
     });
-    slider.addEventListener('change', () => { setManualKcal(a.id, clamp(slider.value) - floor); render(); });
-    manualNum.addEventListener('change', () => { setManualKcal(a.id, clamp(manualNum.value) - floor); render(); });
   }
 
   // Editable calorie GOAL: type any target directly.
