@@ -16,9 +16,9 @@ import {
   addFoodItem, removeFoodItem, setCalorieTarget,
   calorieTargetInfo, calorieWeekSeries,
   BP_TIMINGS, INTENSITY_LEVELS, PAIN_SYMPTOMS,
-} from './store.js?v=23';
-import { QUESTIONNAIRES, itemId } from './psych.js?v=23';
-import { hydrationWeekChart, bpWeekChart, bodyMassWeekChart, sleepChart, calorieWeekChart } from './charts.js?v=23';
+} from './store.js?v=24';
+import { QUESTIONNAIRES, itemId } from './psych.js?v=24';
+import { hydrationWeekChart, bpWeekChart, bodyMassWeekChart, sleepChart, calorieWeekChart } from './charts.js?v=24';
 
 const root = document.getElementById('app');
 // section = top-level ('physio' | 'mental'); physioSub = 'daily' | 'training'
