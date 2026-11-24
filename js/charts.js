@@ -415,3 +415,29 @@ export function bodyMassWeekChart(series, opts = {}) {
     `<path d="${path(pts)}" class="line-red"/>` + dots + lastLabel
   );
 }
+
+// Weekly calories: logged kcal as bars, with the (training-load) target drawn
+// as a dashed line that can vary per day. series: [{ label, logged, target }].
+export function calorieWeekChart(series) {
+  if (!series.length) return emptyChart('No calorie data yet');
+  const labels = series.map((s) => s.label);
+  const vals = series.flatMap((s) => [s.logged || 0, s.target || 0]);
+  const min = 0;
+  const max = Math.max(1000, Math.ceil(Math.max(...vals) / 500) * 500);
+  const inner = H - P.t - P.b;
+  const bw = Math.max(6, ((W - P.l - P.r) / series.length) * 0.45);
+  let bars = '';
+  series.forEach((s, i) => {
+    const x = scaleX(i, series.length);
+    const y = scaleY(s.logged || 0, min, max);
+    bars += `<rect x="${x - bw / 2}" y="${y}" width="${bw}" height="${P.t + inner - y}" class="bar-kcal"/>`;
+  });
+  // Target drawn as a connected dashed line across the days.
+  const tPts = series.map((s, i) => ({ x: scaleX(i, series.length), y: scaleY(s.target || 0, min, max) }));
+  const tDots = tPts.map((p) => `<circle cx="${p.x}" cy="${p.y}" r="2.5" class="dot-blue"/>`).join('');
+  return svgWrap(
+    axes(min, max, labels, { yFmt: (v) => (v / 1000).toFixed(1) + 'k', title: 'Calories — logged (bars) vs target (line)' }) +
+    bars +
+    `<path d="${path(tPts)}" class="line-blue dashed"/>` + tDots
+  );
+}

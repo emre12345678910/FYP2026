@@ -14,10 +14,11 @@ import {
   MASS_GOALS, getMassGoal, massGoalStatus,
   HPB_FOODS, maintenanceKcal, getNutritionToday, nutritionKcalToday,
   addFoodItem, removeFoodItem, setCalorieTarget,
+  calorieTargetInfo, calorieWeekSeries,
   BP_TIMINGS, INTENSITY_LEVELS, PAIN_SYMPTOMS,
-} from './store.js?v=22';
-import { QUESTIONNAIRES, itemId } from './psych.js?v=22';
-import { hydrationWeekChart, bpWeekChart, bodyMassWeekChart, sleepChart } from './charts.js?v=22';
+} from './store.js?v=23';
+import { QUESTIONNAIRES, itemId } from './psych.js?v=23';
+import { hydrationWeekChart, bpWeekChart, bodyMassWeekChart, sleepChart, calorieWeekChart } from './charts.js?v=23';
 
 const root = document.getElementById('app');
 // section = top-level ('physio' | 'mental'); physioSub = 'daily' | 'training'
@@ -443,13 +444,18 @@ function calorieBalance(logged, target) {
 function nutritionCard(a) {
   const today = getNutritionToday(a.id);
   const logged = nutritionKcalToday(a.id);
-  const maint = maintenanceKcal(a);
-  const target = today.target != null ? today.target : maint;
+  // Training-load-based recommended goal for today (boxer kcal/kg guidelines).
+  const info = calorieTargetInfo(a);
+  const recommended = info.recommended;
+  // Athlete's own override wins; otherwise use the training-based recommendation.
+  const target = today.target != null ? today.target : recommended;
+  const usingOverride = today.target != null && today.target !== recommended;
   const bal = calorieBalance(logged, target);
 
-  // Slider bounds (match the sketch: 1,000 … 4,500 kcal). The slider sets the
-  // daily TARGET; the big number shows the logged total from the food log.
-  const SLIDER_MIN = 1000, SLIDER_MAX = 4500;
+  // Slider bounds widen for heavy days (a 90kg boxer's heavy target can top
+  // 6,000 kcal). The slider sets the daily TARGET; the big number is logged.
+  const SLIDER_MIN = 1000;
+  const SLIDER_MAX = Math.max(4500, Math.ceil(((info.rangeHi || 4500) + 500) / 500) * 500);
 
   const { show, portion, selectedFood } = state.nutri;
   const sel = HPB_FOODS[selectedFood] || HPB_FOODS[0];
@@ -476,14 +482,26 @@ function nutritionCard(a) {
   const quickBtns = [
     { label: '-500', delta: -500 },
     { label: '-250', delta: -250 },
-    { label: 'Target', delta: 0, target: true },
+    { label: 'Recommended', delta: 0, target: true },
     { label: '+250', delta: 250 },
     { label: '+500', delta: 500 },
   ].map((b) => `<button type="button" class="cal-quick ${b.target ? 'target' : ''}" data-cal-delta="${b.delta}" data-cal-target="${b.target ? '1' : ''}">${b.label}</button>`).join('');
 
+  // Day-type chip colour: light=green, mixed=yellow, heavy=red.
+  const dayCls = info.dayType === 'heavy' ? 'red' : info.dayType === 'mixed' ? 'yellow' : 'green';
+  const rangeTxt = info.rangeLo != null
+    ? `${kcalFmt(info.rangeLo)}–${kcalFmt(info.rangeHi)} kcal (${info.lo}–${info.hi} kcal/kg × ${info.weight} kg)`
+    : `${info.lo}–${info.hi} kcal/kg — add a body weight for an exact range`;
+
   return `
   <section class="dl-card dl-wide nutrition-card">
-    <div class="dl-card-head"><h3>🍽️ Nutrition</h3><span class="muted small">Daily calories</span></div>
+    <div class="dl-card-head"><h3>🍽️ Nutrition</h3><a href="#" class="hist-link" data-history="nutrition">History</a></div>
+
+    <!-- Training-load day type + recommended range -->
+    <div class="cal-daytype">
+      <span class="tier ${dayCls}">${esc(info.label)}</span>
+      <span class="muted small">Recommended: ${esc(rangeTxt)}</span>
+    </div>
 
     <!-- Calorie slider panel -->
     <div class="cal-panel">
@@ -491,13 +509,13 @@ function nutritionCard(a) {
         <div><span class="cal-big">${kcalFmt(logged)}</span> <span class="cal-unit">kcal logged</span></div>
         <div class="cal-balance">
           <span class="tier ${bal.cls}">${esc(bal.label)}</span>
-          <div class="muted small">Target: ${kcalFmt(target)} kcal${bal.diff != null ? ` (${bal.diff > 0 ? '+' : ''}${kcalFmt(bal.diff)} kcal)` : ''}</div>
+          <div class="muted small">Target: ${kcalFmt(target)} kcal${bal.diff != null ? ` (${bal.diff > 0 ? '+' : ''}${kcalFmt(bal.diff)} kcal)` : ''}${usingOverride ? ' · custom' : ''}</div>
         </div>
       </div>
       <input type="range" class="cal-slider" id="cal-slider" min="${SLIDER_MIN}" max="${SLIDER_MAX}" step="50" value="${Math.round(Math.min(SLIDER_MAX, Math.max(SLIDER_MIN, target)))}" aria-label="Daily calorie target">
       <div class="cal-scale">
         <span class="muted small">${kcalFmt(SLIDER_MIN)} kcal</span>
-        <span class="muted small">Maintenance: ${kcalFmt(maint)} kcal</span>
+        <span class="muted small">Recommended: ${kcalFmt(recommended)} kcal</span>
         <span class="muted small">${kcalFmt(SLIDER_MAX)} kcal</span>
       </div>
       <div class="cal-quick-row">${quickBtns}</div>
@@ -680,6 +698,32 @@ function openHistory(kind, a) {
   }
 
   if (kind === 'bodymass') return openBodyMass(a);
+
+  if (kind === 'nutrition') {
+    const series = calorieWeekSeries(a);
+    const days = series.filter((d) => d.logged > 0);
+    const avgLogged = days.length ? Math.round(days.reduce((s, d) => s + d.logged, 0) / days.length) : 0;
+    const onTarget = series.filter((d) => d.logged > 0 && Math.abs(d.logged - d.target) <= 150).length;
+    const info = calorieTargetInfo(a);
+    const body = `
+      ${summaryCards([
+        { k: "Today's day type", v: esc(info.label.split(' / ')[0]), cls: 'accent' },
+        { k: 'Recommended today', v: kcalFmt(info.recommended) + ' kcal', cls: 'green' },
+        { k: 'Avg logged (7d)', v: avgLogged ? kcalFmt(avgLogged) + ' kcal' : '—' },
+        { k: 'Days on target', v: onTarget + (onTarget === 1 ? ' day' : ' days') },
+      ])}
+      <div class="hist-chart">${calorieWeekChart(series)}</div>
+      <div class="table-wrap"><table class="data-table">
+        <thead><tr><th>Date</th><th>Logged</th><th>Target</th><th>Balance</th></tr></thead>
+        <tbody>${series.slice().reverse().map((d) => {
+          const diff = d.logged - d.target;
+          const cls = d.logged === 0 ? '' : Math.abs(diff) <= 150 ? 'cell-up' : diff < 0 ? 'cell-yellow' : 'cell-red';
+          return `<tr><td>${esc(d.label)}</td><td>${d.logged ? kcalFmt(d.logged) + ' kcal' : '—'}</td>
+            <td>${kcalFmt(d.target)} kcal</td>
+            <td class="${cls}">${d.logged ? (diff > 0 ? '+' : '') + kcalFmt(diff) + ' kcal' : '—'}</td></tr>`;
+        }).join('')}</tbody></table></div>`;
+    return historyModal('Nutrition History', sub, body);
+  }
 
   if (kind === 'training') {
     const list = checkins.filter((c) => c.intensity_level || c.srpe != null || c.duration_mins != null);
@@ -880,11 +924,13 @@ function bindNutrition(a) {
     slider.addEventListener('change', () => { setCalorieTarget(a.id, Number(slider.value)); render(); });
   }
 
-  // Quick target buttons: Target = reset to maintenance; ±N = nudge the target.
+  // Quick target buttons: Recommended = reset to the training-load goal;
+  // ±N = nudge the current target.
   root.querySelectorAll('.cal-quick').forEach((b) => b.addEventListener('click', () => {
+    const recommended = calorieTargetInfo(a).recommended;
     const today = getNutritionToday(a.id);
-    const base = today.target != null ? today.target : maintenanceKcal(a);
-    if (b.dataset.calTarget === '1') setCalorieTarget(a.id, maintenanceKcal(a));
+    const base = today.target != null ? today.target : recommended;
+    if (b.dataset.calTarget === '1') setCalorieTarget(a.id, recommended);
     else setCalorieTarget(a.id, base + Number(b.dataset.calDelta || 0));
     render();
   }));
