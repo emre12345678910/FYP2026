@@ -16,9 +16,9 @@ import {
   addFoodItem, removeFoodItem, setCalorieTarget, setManualKcal,
   calorieTargetInfo, calorieWeekSeries,
   BP_TIMINGS, INTENSITY_LEVELS, PAIN_SYMPTOMS,
-} from './store.js?v=29';
-import { QUESTIONNAIRES, itemId } from './psych.js?v=29';
-import { hydrationWeekChart, bpWeekChart, bodyMassWeekChart, sleepChart, calorieWeekChart } from './charts.js?v=29';
+} from './store.js?v=30';
+import { QUESTIONNAIRES, itemId } from './psych.js?v=30';
+import { hydrationWeekChart, bpWeekChart, bodyMassWeekChart, sleepChart, calorieWeekChart } from './charts.js?v=30';
 
 const root = document.getElementById('app');
 // section = top-level ('physio' | 'mental'); physioSub = 'daily' | 'training'
@@ -530,7 +530,7 @@ function nutritionCard(a) {
         <input type="number" class="cal-manual-num" id="cal-manual-num" min="${foodTotal}" step="10" value="${consumed || ''}" placeholder="0" data-food-floor="${foodTotal}" aria-label="Total calories consumed">
         <span class="muted small">kcal</span>
       </div>
-      <div class="cal-breakdown muted small">Logged meals: ${kcalFmt(foodTotal)} kcal${foodTotal > 0 ? ' (can\\'t go below this)' : ''} · Quick-entry: +${kcalFmt(manual)} kcal · <strong>Total: ${kcalFmt(consumed)} kcal</strong></div>
+      <div class="cal-breakdown muted small">Logged meals: ${kcalFmt(foodTotal)} kcal${foodTotal > 0 ? ' (minimum — can’t go below this)' : ''} · Quick-entry: +${kcalFmt(manual)} kcal · <strong>Total: ${kcalFmt(consumed)} kcal</strong></div>
 
       <!-- Calorie goal (editable), separate from consumed -->
       <div class="cal-target-row">
@@ -1233,9 +1233,23 @@ function liveRefresh() {
 
 async function boot() {
   // Paint immediately from the local cache so the page never waits on the
-  // network. Then connect to the shared backend in the background; when its
-  // data arrives, startSync()'s listener re-renders.
-  render();
+  // network. If the first render throws, show a visible message instead of a
+  // blank page (a silent throw here is what causes a "can't see anything").
+  try {
+    render();
+  } catch (e) {
+    if (root) {
+      root.innerHTML = `<div style="max-width:640px;margin:40px auto;padding:20px;font-family:system-ui,sans-serif;color:#e8eef4;background:#141b23;border:1px solid #27313c;border-radius:12px">
+        <h2 style="margin:0 0 8px">Something went wrong loading the app</h2>
+        <p style="color:#8b9aab">${esc(e && e.message || e)}</p>
+        <button onclick="location.reload()" style="background:#ff6b35;color:#fff;border:0;border-radius:8px;padding:10px 18px;font-weight:700;cursor:pointer">Reload</button>
+      </div>`;
+    }
+    console.error('Initial render failed:', e);
+    return; // don't continue to the network layer on a broken render
+  }
+  // Connect to the shared backend in the BACKGROUND. Never let a slow/failed
+  // Firebase load block or blank the already-painted UI.
   try {
     await resolveBackend();
     render(); // re-render so the sync badge reflects the resolved backend
@@ -1243,6 +1257,19 @@ async function boot() {
       pullState().then((changed) => { if (changed) render(); }).catch(() => {});
       startSync(liveRefresh);
     }
-  } catch (e) { /* stay on local cache */ }
+  } catch (e) { console.warn('Backend unavailable — using local data only:', e && e.message); }
 }
+
+// Surface any uncaught load-time error visibly instead of a white screen.
+window.addEventListener('error', (ev) => {
+  const el = document.getElementById('app');
+  if (el && !el.querySelector('header, .daily-log, .panel, div')) {
+    el.innerHTML = `<div style="max-width:640px;margin:40px auto;padding:20px;font-family:system-ui,sans-serif;color:#e8eef4;background:#141b23;border:1px solid #27313c;border-radius:12px">
+      <h2 style="margin:0 0 8px">Couldn't start the app</h2>
+      <p style="color:#8b9aab">${(ev && ev.message) || 'Script error'} — try a hard refresh (Ctrl/Cmd+Shift+R).</p>
+      <button onclick="location.reload()" style="background:#ff6b35;color:#fff;border:0;border-radius:8px;padding:10px 18px;font-weight:700;cursor:pointer">Reload</button>
+    </div>`;
+  }
+});
+
 boot();
