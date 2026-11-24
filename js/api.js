@@ -57,6 +57,7 @@ export const KEYS = {
   mental: 'eastside_fc_mental_v1',
   overrides: 'eastside_fc_overrides_v1',
   hydration: 'eastside_fc_hydration_v1',
+  nutrition: 'eastside_fc_nutrition_v1',
 };
 
 function serverBase() {
@@ -202,7 +203,7 @@ function applyMergedState(data) {
   data = data || {};
   let changed = false;
   const arrayKeys = [KEYS.athletes, KEYS.checkins, KEYS.mental];
-  const mapKeys = [KEYS.overrides, KEYS.hydration];
+  const mapKeys = [KEYS.overrides, KEYS.hydration, KEYS.nutrition];
   for (const key of arrayKeys) {
     const merged = mergeById(readLocal(key, []), data[key] || []);
     const text = JSON.stringify(merged);
@@ -230,7 +231,7 @@ async function pushKeyFirebase(key, value) {
   let parsed;
   try { parsed = JSON.parse(value); } catch { parsed = value; }
   const arrayKeys = [KEYS.athletes, KEYS.checkins, KEYS.mental];
-  const mapKeys = [KEYS.overrides, KEYS.hydration];
+  const mapKeys = [KEYS.overrides, KEYS.hydration, KEYS.nutrition];
   if (arrayKeys.includes(key) || mapKeys.includes(key)) {
     try {
       const snap = await fb.getDoc(fb.ref);

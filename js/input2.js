@@ -12,14 +12,21 @@ import {
   hydrationGoalMl, exerciseMinutesToday,
   exportData, importData, pullState, startSync, isShared, resolveBackend, activeBackend,
   MASS_GOALS, getMassGoal, massGoalStatus,
+  HPB_FOODS, maintenanceKcal, getNutritionToday, nutritionKcalToday,
+  addFoodItem, removeFoodItem, setCalorieTarget,
   BP_TIMINGS, INTENSITY_LEVELS, PAIN_SYMPTOMS,
-} from './store.js?v=21';
-import { QUESTIONNAIRES, itemId } from './psych.js?v=21';
-import { hydrationWeekChart, bpWeekChart, bodyMassWeekChart, sleepChart } from './charts.js?v=21';
+} from './store.js?v=22';
+import { QUESTIONNAIRES, itemId } from './psych.js?v=22';
+import { hydrationWeekChart, bpWeekChart, bodyMassWeekChart, sleepChart } from './charts.js?v=22';
 
 const root = document.getElementById('app');
 // section = top-level ('physio' | 'mental'); physioSub = 'daily' | 'training'
-let state = { section: 'physio', physioSub: 'daily', selectedAthlete: null };
+// nutri = transient UI state for the Nutrition card (not persisted):
+//   show (food log + estimator visible), portion multiplier, selected HPB food.
+let state = {
+  section: 'physio', physioSub: 'daily', selectedAthlete: null,
+  nutri: { show: true, portion: 1, selectedFood: 0 },
+};
 
 function athleteById(id) { return getAthletes().find((a) => a.id === id); }
 // A small badge showing whether cloud sync is active.
@@ -177,6 +184,8 @@ function dailyLog(a) {
     <form id="daily-form" class="dl-grid">
 
       ${hydrationCard(a)}
+
+      ${nutritionCard(a)}
 
       <!-- Body Mass -->
       <section class="dl-card">
@@ -411,6 +420,118 @@ function bodyMassLogTable(checkins) {
     return `<tr><td>${esc(formatSgt(c.timestampUtc))}</td><td>${c.body_mass_kg} kg</td><td class="${delta != null && delta < 0 ? 'cell-yellow' : ''}">${deltaStr}</td></tr>`;
   }).join('');
   return `<div class="table-wrap"><table class="data-table"><thead><tr><th>Time (SGT)</th><th>Body mass</th><th>Δ vs prev</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+}
+
+/* --------------------------- Nutrition card ----------------------------- */
+// kcal with a thousands separator, e.g. 2,000.
+function kcalFmt(n) { return Math.round(Number(n) || 0).toLocaleString('en-US'); }
+
+// Classify how today's logged kcal compares to the target, returning a label
+// + colour class for the status pill (mirrors the screenshot's "Deficit" pill).
+function calorieBalance(logged, target) {
+  if (!target) return { label: 'No target set', cls: 'muted', diff: null, pct: null };
+  const diff = logged - target;                 // negative = deficit
+  const pct = Math.round((logged / target) * 100);
+  const absPct = Math.abs(Math.round((diff / target) * 100));
+  if (diff <= -500) return { label: `Aggressive Deficit (${pct}%)`, cls: 'red', diff, pct };
+  if (diff < -100) return { label: `Deficit (${pct}%)`, cls: 'yellow', diff, pct };
+  if (diff <= 100) return { label: `On Target (${pct}%)`, cls: 'green', diff, pct };
+  if (diff < 500) return { label: `Surplus (${pct}%)`, cls: 'yellow', diff, pct };
+  return { label: `Large Surplus (${pct}%)`, cls: 'red', diff, pct };
+}
+
+function nutritionCard(a) {
+  const today = getNutritionToday(a.id);
+  const logged = nutritionKcalToday(a.id);
+  const maint = maintenanceKcal(a);
+  const target = today.target != null ? today.target : maint;
+  const bal = calorieBalance(logged, target);
+
+  // Slider bounds (match the sketch: 1,000 … 4,500 kcal). The slider sets the
+  // daily TARGET; the big number shows the logged total from the food log.
+  const SLIDER_MIN = 1000, SLIDER_MAX = 4500;
+
+  const { show, portion, selectedFood } = state.nutri;
+  const sel = HPB_FOODS[selectedFood] || HPB_FOODS[0];
+  const selKcal = Math.round(sel.kcal * portion);
+
+  const foodRows = today.foods.length
+    ? today.foods.slice().reverse().map((f) => `
+      <div class="food-item">
+        <div class="food-item-main">
+          <div class="food-item-note">${esc(f.note)}</div>
+          <div class="muted small">${esc(f.label.split(' ').slice(1).join(' '))}${f.portion && f.portion !== 1 ? ` · ${f.portion}x` : ''}</div>
+        </div>
+        <div class="food-item-kcal">${kcalFmt(f.kcal)} kcal</div>
+        <button class="food-del" type="button" data-food-del="${esc(f.id)}" title="Remove">×</button>
+      </div>`).join('')
+    : '<p class="muted small">No food logged yet today.</p>';
+
+  const foodButtons = HPB_FOODS.map((fd, i) =>
+    `<button type="button" class="food-db-item ${i === selectedFood ? 'sel' : ''}" data-food-pick="${i}">${esc(fd.name)} · ${fd.kcal}</button>`).join('');
+
+  const portionBtns = [0.5, 1, 1.5].map((p) =>
+    `<button type="button" class="portion-btn ${p === portion ? 'sel' : ''}" data-portion="${p}">${p}x</button>`).join('');
+
+  const quickBtns = [
+    { label: '-500', delta: -500 },
+    { label: '-250', delta: -250 },
+    { label: 'Target', delta: 0, target: true },
+    { label: '+250', delta: 250 },
+    { label: '+500', delta: 500 },
+  ].map((b) => `<button type="button" class="cal-quick ${b.target ? 'target' : ''}" data-cal-delta="${b.delta}" data-cal-target="${b.target ? '1' : ''}">${b.label}</button>`).join('');
+
+  return `
+  <section class="dl-card dl-wide nutrition-card">
+    <div class="dl-card-head"><h3>🍽️ Nutrition</h3><span class="muted small">Daily calories</span></div>
+
+    <!-- Calorie slider panel -->
+    <div class="cal-panel">
+      <div class="cal-head">
+        <div><span class="cal-big">${kcalFmt(logged)}</span> <span class="cal-unit">kcal logged</span></div>
+        <div class="cal-balance">
+          <span class="tier ${bal.cls}">${esc(bal.label)}</span>
+          <div class="muted small">Target: ${kcalFmt(target)} kcal${bal.diff != null ? ` (${bal.diff > 0 ? '+' : ''}${kcalFmt(bal.diff)} kcal)` : ''}</div>
+        </div>
+      </div>
+      <input type="range" class="cal-slider" id="cal-slider" min="${SLIDER_MIN}" max="${SLIDER_MAX}" step="50" value="${Math.round(Math.min(SLIDER_MAX, Math.max(SLIDER_MIN, target)))}" aria-label="Daily calorie target">
+      <div class="cal-scale">
+        <span class="muted small">${kcalFmt(SLIDER_MIN)} kcal</span>
+        <span class="muted small">Maintenance: ${kcalFmt(maint)} kcal</span>
+        <span class="muted small">${kcalFmt(SLIDER_MAX)} kcal</span>
+      </div>
+      <div class="cal-quick-row">${quickBtns}</div>
+    </div>
+
+    <button type="button" class="ghost nutri-toggle" id="nutri-toggle">${show ? 'Hide' : 'Show'} Food Log &amp; HPB Estimator</button>
+
+    ${show ? `
+    <div class="nutri-cols">
+      <!-- Daily Food Log -->
+      <div class="nutri-col">
+        <div class="nutri-col-head"><h4>Daily Food Log</h4><span class="muted small">${today.foods.length} item${today.foods.length === 1 ? '' : 's'} logged</span></div>
+        <div class="food-add-row">
+          <input type="text" id="food-note" placeholder="Meal note" class="food-note-input">
+          <input type="number" id="food-kcal" placeholder="kcal" min="0" step="10" class="food-kcal-input">
+          <button type="button" class="ghost" id="food-add">Add</button>
+        </div>
+        <div class="food-list">${foodRows}</div>
+        <div class="food-sum-row">
+          <span class="muted small">Sum: ${kcalFmt(logged)} kcal</span>
+          <button type="button" class="ghost" id="food-sync">Sync Food Total to Slider</button>
+        </div>
+      </div>
+
+      <!-- HPB Calorie Estimator -->
+      <div class="nutri-col">
+        <div class="nutri-col-head"><h4>HPB Calorie Estimator</h4><span class="muted small">SG Food Database</span></div>
+        <div class="food-db">${foodButtons}</div>
+        <div class="portion-row"><span class="muted small">Portion multiplier</span><div class="portion-btns">${portionBtns}</div></div>
+        <div class="food-sel-preview">${esc(sel.name)} (${portion}x) <strong>+${kcalFmt(selKcal)} kcal</strong></div>
+        <button type="button" class="primary food-estimate-add" id="food-estimate-add">Add to Food Log &amp; Update Slider</button>
+      </div>
+    </div>` : ''}
+  </section>`;
 }
 
 /* --------------------------- Hydration card ----------------------------- */
@@ -747,6 +868,65 @@ function bindHydration(a) {
   if (removeBottleBtn) removeBottleBtn.addEventListener('click', () => { removeBottle(a.id); render(); });
 }
 
+function bindNutrition(a) {
+  // Show / hide the food log + estimator.
+  const toggle = root.querySelector('#nutri-toggle');
+  if (toggle) toggle.addEventListener('click', () => { state.nutri.show = !state.nutri.show; render(); });
+
+  // Calorie slider → sets today's target (NOT the logged total). Commit on
+  // release ('change') so dragging stays smooth and render() doesn't fight it.
+  const slider = root.querySelector('#cal-slider');
+  if (slider) {
+    slider.addEventListener('change', () => { setCalorieTarget(a.id, Number(slider.value)); render(); });
+  }
+
+  // Quick target buttons: Target = reset to maintenance; ±N = nudge the target.
+  root.querySelectorAll('.cal-quick').forEach((b) => b.addEventListener('click', () => {
+    const today = getNutritionToday(a.id);
+    const base = today.target != null ? today.target : maintenanceKcal(a);
+    if (b.dataset.calTarget === '1') setCalorieTarget(a.id, maintenanceKcal(a));
+    else setCalorieTarget(a.id, base + Number(b.dataset.calDelta || 0));
+    render();
+  }));
+
+  // Manual food add (note + kcal).
+  const addBtn = root.querySelector('#food-add');
+  if (addBtn) addBtn.addEventListener('click', () => {
+    const note = root.querySelector('#food-note');
+    const kcal = root.querySelector('#food-kcal');
+    const cal = Number(kcal && kcal.value);
+    if (!cal || cal <= 0) { alert('Enter a calorie amount (kcal) for the food.'); return; }
+    addFoodItem(a.id, (note && note.value) || 'Food item', cal, 1);
+    render();
+  });
+
+  // Remove a logged food item.
+  root.querySelectorAll('[data-food-del]').forEach((b) =>
+    b.addEventListener('click', () => { removeFoodItem(a.id, b.dataset.foodDel); render(); }));
+
+  // "Sync Food Total to Slider": set the target to the logged total.
+  const syncBtn = root.querySelector('#food-sync');
+  if (syncBtn) syncBtn.addEventListener('click', () => { setCalorieTarget(a.id, nutritionKcalToday(a.id)); render(); });
+
+  // HPB estimator: pick a food (selection is transient UI state).
+  root.querySelectorAll('[data-food-pick]').forEach((b) =>
+    b.addEventListener('click', () => { state.nutri.selectedFood = Number(b.dataset.foodPick); render(); }));
+
+  // Portion multiplier (0.5 / 1 / 1.5).
+  root.querySelectorAll('[data-portion]').forEach((b) =>
+    b.addEventListener('click', () => { state.nutri.portion = Number(b.dataset.portion); render(); }));
+
+  // "Add to Food Log & Update Slider": log the selected HPB food at the chosen
+  // portion, then sync the slider target to the new logged total.
+  const estAdd = root.querySelector('#food-estimate-add');
+  if (estAdd) estAdd.addEventListener('click', () => {
+    const sel = HPB_FOODS[state.nutri.selectedFood] || HPB_FOODS[0];
+    addFoodItem(a.id, sel.name, sel.kcal, state.nutri.portion);
+    setCalorieTarget(a.id, nutritionKcalToday(a.id));
+    render();
+  });
+}
+
 function flashSaved(form, text) {
   const msg = form.querySelector('#save-msg');
   if (msg) { msg.textContent = text; msg.classList.add('show'); }
@@ -755,6 +935,7 @@ function flashSaved(form, text) {
 
 function bindDaily(a) {
   bindHydration(a);
+  bindNutrition(a);
 
   // Sleep tracker
   const sleepStart = root.querySelector('#sleep-start');
