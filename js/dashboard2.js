@@ -9,17 +9,17 @@ import {
   hydrationMlForDay, hydrationGoalMl, getHydrationForDay, lastBodyMass,
   calorieTargetInfo, getNutritionToday, nutritionKcalToday, calorieWeekSeries,
   getOverride, exportData, importData, pullState, startSync, isShared, resolveBackend, activeBackend,
-} from './store.js?v=30';
-import { evaluateAthlete, readinessTier, evaluateReadinessStatus, tierMeta } from './alerts.js?v=30';
+} from './store.js?v=31';
+import { evaluateAthlete, readinessTier, evaluateReadinessStatus, tierMeta } from './alerts.js?v=31';
 import {
   srpeChart, painChart, sleepChart, hydrationWeekChart, bpWeekChart, bodyMassWeekChart,
   calorieWeekChart,
   restqProfileChart, restqBalanceChart, pomsProfileChart, pomsTmdChart,
   tsciChart, smsProfileChart, smsRaiChart, weeklyTrendChart,
-} from './charts.js?v=30';
+} from './charts.js?v=31';
 import {
   QUESTIONNAIRES, scoreRestq, scorePoms, scoreTsci, scoreSms,
-} from './psych.js?v=30';
+} from './psych.js?v=31';
 
 const root = document.getElementById('app');
 // tab: 'physio' | 'psych' ; physioSub: 'daily' | 'training' | 'pain'

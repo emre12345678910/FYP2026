@@ -16,9 +16,9 @@ import {
   addFoodItem, removeFoodItem, setCalorieTarget, setManualKcal,
   calorieTargetInfo, calorieWeekSeries,
   BP_TIMINGS, INTENSITY_LEVELS, PAIN_SYMPTOMS,
-} from './store.js?v=30';
-import { QUESTIONNAIRES, itemId } from './psych.js?v=30';
-import { hydrationWeekChart, bpWeekChart, bodyMassWeekChart, sleepChart, calorieWeekChart } from './charts.js?v=30';
+} from './store.js?v=31';
+import { QUESTIONNAIRES, itemId } from './psych.js?v=31';
+import { hydrationWeekChart, bpWeekChart, bodyMassWeekChart, sleepChart, calorieWeekChart } from './charts.js?v=31';
 
 const root = document.getElementById('app');
 // section = top-level ('physio' | 'mental'); physioSub = 'daily' | 'training'
@@ -427,18 +427,30 @@ function bodyMassLogTable(checkins) {
 // kcal with a thousands separator, e.g. 2,000.
 function kcalFmt(n) { return Math.round(Number(n) || 0).toLocaleString('en-US'); }
 
+// A proximity colour for calories: muted/amber when far below the goal, turning
+// GREENER as it approaches the goal, then RED once it goes over. Returns a CSS
+// colour string. ratio = consumed / target.
+function calorieColor(consumed, target) {
+  if (!target) return 'var(--muted)';
+  const ratio = consumed / target;
+  if (ratio > 1) return 'var(--red)';            // over the goal → red
+  // 0 → amber/orange, approaching 1 → green. Interpolate hue 35°(amber) → 140°(green).
+  const t = Math.max(0, Math.min(1, ratio));
+  const hue = Math.round(35 + t * (140 - 35));   // 35 (amber) … 140 (green)
+  const light = 55;
+  return `hsl(${hue} 70% ${light}%)`;
+}
+
 // Classify how today's logged kcal compares to the target, returning a label
-// + colour class for the status pill (mirrors the screenshot's "Deficit" pill).
+// + colour class for the status pill.
 function calorieBalance(logged, target) {
   if (!target) return { label: 'No target set', cls: 'muted', diff: null, pct: null };
   const diff = logged - target;                 // negative = deficit
   const pct = Math.round((logged / target) * 100);
-  const absPct = Math.abs(Math.round((diff / target) * 100));
-  if (diff <= -500) return { label: `Aggressive Deficit (${pct}%)`, cls: 'red', diff, pct };
-  if (diff < -100) return { label: `Deficit (${pct}%)`, cls: 'yellow', diff, pct };
-  if (diff <= 100) return { label: `On Target (${pct}%)`, cls: 'green', diff, pct };
-  if (diff < 500) return { label: `Surplus (${pct}%)`, cls: 'yellow', diff, pct };
-  return { label: `Large Surplus (${pct}%)`, cls: 'red', diff, pct };
+  if (diff > 0) return { label: `Over goal (${pct}%)`, cls: 'red', diff, pct };
+  if (diff >= -100) return { label: `On goal (${pct}%)`, cls: 'green', diff, pct };
+  if (diff >= -500) return { label: `Approaching (${pct}%)`, cls: 'yellow', diff, pct };
+  return { label: `Below goal (${pct}%)`, cls: 'yellow', diff, pct };
 }
 
 function nutritionCard(a) {
@@ -453,6 +465,10 @@ function nutritionCard(a) {
   const target = today.target != null ? today.target : recommended;
   const usingOverride = today.target != null && today.target !== recommended;
   const bal = calorieBalance(consumed, target);
+  // Proximity colour + progress toward the goal (green as it nears, red if over).
+  const calColor = calorieColor(consumed, target);
+  const pctOfGoal = target ? Math.round((consumed / target) * 100) : 0;
+  const progressPct = Math.min(100, pctOfGoal); // bar caps at 100% width
 
   // Slider spans 0 → comfortably above both the recommended range and whatever
   // has already been consumed (food + manual), so a big day still fits.
@@ -513,12 +529,23 @@ function nutritionCard(a) {
     <!-- Calories consumed panel -->
     <div class="cal-panel">
       <div class="cal-head">
-        <div><span class="cal-big">${kcalFmt(consumed)}</span> <span class="cal-unit">kcal consumed</span></div>
+        <div><span class="cal-big" style="color:${calColor}">${kcalFmt(consumed)}</span> <span class="cal-unit">kcal consumed</span></div>
         <div class="cal-balance">
           <span class="tier ${bal.cls}">${esc(bal.label)}</span>
-          <div class="muted small">Target: ${kcalFmt(target)} kcal${bal.diff != null ? ` (${bal.diff > 0 ? '+' : ''}${kcalFmt(bal.diff)} kcal)` : ''}${usingOverride ? ' · custom' : ''}</div>
+          ${bal.diff != null ? `<div class="muted small">${bal.diff > 0 ? '+' : ''}${kcalFmt(bal.diff)} kcal vs goal</div>` : ''}
         </div>
       </div>
+
+      <!-- Big, obvious GOAL display -->
+      <div class="cal-goal-banner">
+        <span class="cal-goal-banner-label">🎯 Daily goal</span>
+        <span class="cal-goal-banner-value">${kcalFmt(target)}<span class="cal-goal-banner-unit"> kcal</span></span>
+        ${usingOverride ? '<span class="tier small" style="background:rgba(78,161,255,.15);color:var(--blue)">custom</span>' : ''}
+      </div>
+
+      <!-- Progress bar: fills + turns greener toward the goal, red once over -->
+      <div class="cal-progress"><div class="cal-progress-fill" style="width:${progressPct}%;background:${calColor}"></div></div>
+      <div class="cal-progress-scale"><span class="muted small">0</span><span class="muted small">${pctOfGoal}% of goal</span><span class="muted small">${kcalFmt(target)}</span></div>
 
       <!-- Total-consumed slider. The handle = food log + quick-entry, so
            logging a meal pushes it up. It can't go BELOW the food-log total,
@@ -532,10 +559,10 @@ function nutritionCard(a) {
       </div>
       <div class="cal-breakdown muted small">Logged meals: ${kcalFmt(foodTotal)} kcal${foodTotal > 0 ? ' (minimum — can’t go below this)' : ''} · Quick-entry: +${kcalFmt(manual)} kcal · <strong>Total: ${kcalFmt(consumed)} kcal</strong></div>
 
-      <!-- Calorie goal (editable), separate from consumed -->
+      <!-- Change the goal (editable), separate from consumed -->
       <div class="cal-target-row">
         <div class="cal-goal-edit">
-          <label class="cal-goal-label" for="cal-target-num">Calorie goal</label>
+          <label class="cal-goal-label" for="cal-target-num">Change goal</label>
           <input type="number" class="cal-target-num" id="cal-target-num" min="0" step="50" value="${target}" aria-label="Daily calorie goal">
           <span class="muted small">kcal</span>
           <button type="button" class="ghost cal-goal-reset" id="cal-goal-reset" title="Reset to the training-load recommendation">↺ Recommended</button>
