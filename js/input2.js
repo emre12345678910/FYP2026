@@ -16,9 +16,9 @@ import {
   addFoodItem, removeFoodItem, setCalorieTarget, setManualKcal,
   calorieTargetInfo, calorieWeekSeries,
   BP_TIMINGS, INTENSITY_LEVELS, PAIN_SYMPTOMS,
-} from './store.js?v=25';
-import { QUESTIONNAIRES, itemId } from './psych.js?v=25';
-import { hydrationWeekChart, bpWeekChart, bodyMassWeekChart, sleepChart, calorieWeekChart } from './charts.js?v=25';
+} from './store.js?v=26';
+import { QUESTIONNAIRES, itemId } from './psych.js?v=26';
+import { hydrationWeekChart, bpWeekChart, bodyMassWeekChart, sleepChart, calorieWeekChart } from './charts.js?v=26';
 
 const root = document.getElementById('app');
 // section = top-level ('physio' | 'mental'); physioSub = 'daily' | 'training'
@@ -26,7 +26,7 @@ const root = document.getElementById('app');
 //   show (food log + estimator visible), portion multiplier, selected HPB food.
 let state = {
   section: 'physio', physioSub: 'daily', selectedAthlete: null,
-  nutri: { show: true, portion: 1, selectedFood: 0, search: '' },
+  nutri: { show: true, portion: 1, selectedFood: 0, search: '', grams: null },
 };
 
 function athleteById(id) { return getAthletes().find((a) => a.id === id); }
@@ -466,7 +466,10 @@ function nutritionCard(a) {
   const filtered = HPB_FOODS.map((fd, i) => ({ fd, i }))
     .filter(({ fd }) => !q || fd.name.toLowerCase().includes(q));
   const sel = HPB_FOODS[selectedFood] || HPB_FOODS[0];
-  const selKcal = Math.round(sel.kcal * portion);
+  // Weigh-by-gram foods scale from per100g; others use the portion multiplier.
+  const byGram = sel.per100g != null;
+  const grams = byGram ? (state.nutri.grams != null ? state.nutri.grams : (sel.grams || 100)) : null;
+  const selKcal = byGram ? Math.round(sel.per100g * (grams / 100)) : Math.round(sel.kcal * portion);
 
   const foodRows = today.foods.length
     ? today.foods.slice().reverse().map((f) => `
@@ -488,13 +491,8 @@ function nutritionCard(a) {
   const portionBtns = [0.5, 1, 1.5, 2].map((p) =>
     `<button type="button" class="portion-btn ${p === portion ? 'sel' : ''}" data-portion="${p}">${p}x</button>`).join('');
 
-  const quickBtns = [
-    { label: '-500', delta: -500 },
-    { label: '-250', delta: -250 },
-    { label: 'Recommended', delta: 0, target: true },
-    { label: '+250', delta: 250 },
-    { label: '+500', delta: 500 },
-  ].map((b) => `<button type="button" class="cal-quick ${b.target ? 'target' : ''}" data-cal-delta="${b.delta}" data-cal-target="${b.target ? '1' : ''}">${b.label}</button>`).join('');
+  const quickBtns = [-500, -250, 250, 500]
+    .map((d) => `<button type="button" class="cal-quick" data-cal-delta="${d}">${d > 0 ? '+' : ''}${d}</button>`).join('');
 
   // Day-type chip colour: light=green, mixed=yellow, heavy=red.
   const dayCls = info.dayType === 'heavy' ? 'red' : info.dayType === 'mixed' ? 'yellow' : 'green';
@@ -532,9 +530,14 @@ function nutritionCard(a) {
       </div>
       <div class="cal-breakdown muted small">Food log: ${kcalFmt(foodTotal)} kcal · Quick-entry: ${kcalFmt(manual)} kcal · <strong>Total: ${kcalFmt(consumed)} kcal</strong></div>
 
-      <!-- Target adjusters (the goal line, separate from consumed) -->
+      <!-- Calorie goal (editable), separate from consumed -->
       <div class="cal-target-row">
-        <span class="muted small">Adjust target</span>
+        <div class="cal-goal-edit">
+          <label class="cal-goal-label" for="cal-target-num">Calorie goal</label>
+          <input type="number" class="cal-target-num" id="cal-target-num" min="0" step="50" value="${target}" aria-label="Daily calorie goal">
+          <span class="muted small">kcal</span>
+          <button type="button" class="ghost cal-goal-reset" id="cal-goal-reset" title="Reset to the training-load recommendation">↺ Recommended</button>
+        </div>
         <div class="cal-quick-row">${quickBtns}</div>
       </div>
     </div>
@@ -562,8 +565,11 @@ function nutritionCard(a) {
         <div class="nutri-col-head"><h4>HPB Calorie Estimator</h4><span class="muted small">SG Food Database</span></div>
         <input type="text" id="food-search" class="food-search" placeholder="🔍 Search foods (e.g. rice, chicken, laksa)" value="${esc(search || '')}">
         <div class="food-db">${foodButtons}</div>
-        <div class="portion-row"><span class="muted small">Portion multiplier</span><div class="portion-btns">${portionBtns}</div></div>
-        <div class="food-sel-preview">${esc(sel.name)} (${portion}x) <strong>+${kcalFmt(selKcal)} kcal</strong></div>
+        ${byGram
+          ? `<div class="portion-row"><label class="muted small" for="food-grams">Weight</label>
+               <div class="grams-input"><input type="number" id="food-grams" min="0" step="10" value="${grams}"> <span class="muted small">g</span></div></div>`
+          : `<div class="portion-row"><span class="muted small">Portion multiplier</span><div class="portion-btns">${portionBtns}</div></div>`}
+        <div class="food-sel-preview">${esc(sel.name)} ${byGram ? `(${grams} g)` : `(${portion}x)`} <strong>+${kcalFmt(selKcal)} kcal</strong></div>
         <button type="button" class="primary food-estimate-add" id="food-estimate-add">Add to Food Log</button>
       </div>
     </div>` : ''}
@@ -949,14 +955,23 @@ function bindNutrition(a) {
     });
   }
 
-  // Quick TARGET buttons: Recommended = reset to the training-load goal;
-  // ±N = nudge the current target (these change the goal line, not consumed).
+  // Editable calorie GOAL: type any target directly.
+  const targetNum = root.querySelector('#cal-target-num');
+  if (targetNum) targetNum.addEventListener('change', () => {
+    setCalorieTarget(a.id, Math.max(0, Number(targetNum.value) || 0));
+    render();
+  });
+  // Reset the goal to the training-load recommendation.
+  const goalReset = root.querySelector('#cal-goal-reset');
+  if (goalReset) goalReset.addEventListener('click', () => {
+    setCalorieTarget(a.id, calorieTargetInfo(a).recommended); render();
+  });
+  // ±N buttons nudge the current goal (the goal line, not consumed).
   root.querySelectorAll('.cal-quick').forEach((b) => b.addEventListener('click', () => {
     const recommended = calorieTargetInfo(a).recommended;
     const today = getNutritionToday(a.id);
     const base = today.target != null ? today.target : recommended;
-    if (b.dataset.calTarget === '1') setCalorieTarget(a.id, recommended);
-    else setCalorieTarget(a.id, base + Number(b.dataset.calDelta || 0));
+    setCalorieTarget(a.id, base + Number(b.dataset.calDelta || 0));
     render();
   }));
 
@@ -986,19 +1001,41 @@ function bindNutrition(a) {
     if (again) { again.focus(); try { again.setSelectionRange(caret, caret); } catch { /* noop */ } }
   });
 
-  // HPB estimator: pick a food (selection stored by original index).
+  // HPB estimator: pick a food (selection stored by original index). Reset the
+  // grams box to the food's default so each pick starts clean.
   root.querySelectorAll('[data-food-pick]').forEach((b) =>
-    b.addEventListener('click', () => { state.nutri.selectedFood = Number(b.dataset.foodPick); render(); }));
+    b.addEventListener('click', () => {
+      state.nutri.selectedFood = Number(b.dataset.foodPick);
+      state.nutri.grams = null; // re-defaults from the food in the card
+      render();
+    }));
 
-  // Portion multiplier (0.5 / 1 / 1.5 / 2).
+  // Portion multiplier (0.5 / 1 / 1.5 / 2) — for fixed-serving foods.
   root.querySelectorAll('[data-portion]').forEach((b) =>
     b.addEventListener('click', () => { state.nutri.portion = Number(b.dataset.portion); render(); }));
 
-  // "Add to Food Log": log the selected HPB food at the chosen portion.
+  // Grams input — for weigh-by-gram raw ingredients. Live caret-preserving.
+  const gramsBox = root.querySelector('#food-grams');
+  if (gramsBox) gramsBox.addEventListener('input', () => {
+    const caret = gramsBox.selectionStart;
+    state.nutri.grams = Math.max(0, Number(gramsBox.value) || 0);
+    render();
+    const again = root.querySelector('#food-grams');
+    if (again) { again.focus(); try { again.setSelectionRange(caret, caret); } catch { /* noop */ } }
+  });
+
+  // "Add to Food Log": log the selected food. Weigh-by-gram foods are scaled
+  // from per100g and noted with the gram amount; others use the portion.
   const estAdd = root.querySelector('#food-estimate-add');
   if (estAdd) estAdd.addEventListener('click', () => {
     const sel = HPB_FOODS[state.nutri.selectedFood] || HPB_FOODS[0];
-    addFoodItem(a.id, sel.name, sel.kcal, state.nutri.portion);
+    if (sel.per100g != null) {
+      const g = state.nutri.grams != null ? state.nutri.grams : (sel.grams || 100);
+      const cal = Math.round(sel.per100g * (g / 100));
+      addFoodItem(a.id, `${sel.name} (${g} g)`, cal, 1);
+    } else {
+      addFoodItem(a.id, sel.name, sel.kcal, state.nutri.portion);
+    }
     render();
   });
 }
