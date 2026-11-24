@@ -16,9 +16,9 @@ import {
   addFoodItem, removeFoodItem, setCalorieTarget, setManualKcal,
   calorieTargetInfo, calorieWeekSeries,
   BP_TIMINGS, INTENSITY_LEVELS, PAIN_SYMPTOMS,
-} from './store.js?v=33';
-import { QUESTIONNAIRES, itemId } from './psych.js?v=33';
-import { hydrationWeekChart, bpWeekChart, bodyMassWeekChart, sleepChart, calorieWeekChart } from './charts.js?v=33';
+} from './store.js?v=34';
+import { QUESTIONNAIRES, itemId } from './psych.js?v=34';
+import { hydrationWeekChart, bpWeekChart, bodyMassWeekChart, sleepChart, calorieWeekChart } from './charts.js?v=34';
 
 const root = document.getElementById('app');
 // section = top-level ('physio' | 'mental'); physioSub = 'daily' | 'training'
@@ -468,7 +468,6 @@ function nutritionCard(a) {
   // Proximity colour + progress toward the goal (green as it nears, red if over).
   const calColor = calorieColor(consumed, target);
   const pctOfGoal = target ? Math.round((consumed / target) * 100) : 0;
-  const progressPct = Math.min(100, pctOfGoal); // bar caps at 100% width
 
   // Slider spans 0 → comfortably above both the recommended range and whatever
   // has already been consumed (food + manual), so a big day still fits.
@@ -540,10 +539,8 @@ function nutritionCard(a) {
         ${usingOverride ? '<span class="tier small" style="background:rgba(78,161,255,.15);color:var(--blue)">custom</span>' : ''}
       </div>
 
-      <!-- Progress bar: shows % of goal (neutral colour; the slider conveys
-           the green→red proximity). -->
-      <div class="cal-progress"><div class="cal-progress-fill" style="width:${progressPct}%"></div></div>
-      <div class="cal-progress-scale"><span class="muted small">0</span><span class="muted small">${pctOfGoal}% of goal</span><span class="muted small">${kcalFmt(target)}</span></div>
+      <!-- Simple % of goal (no bar). -->
+      <div class="cal-pct">${pctOfGoal}% of goal</div>
 
       <!-- Total-consumed slider. The handle = food log + quick-entry, so
            logging a meal pushes it up. It can't go BELOW the food-log total,
