@@ -6,10 +6,17 @@
   <link rel="preconnect" href="https://www.gstatic.com" crossorigin />
   <link rel="preconnect" href="https://firestore.googleapis.com" crossorigin />
   <title>Eastside FC — Athlete Daily Log</title>
-  <link rel="stylesheet" href="styles.css?v=28" />
+  <link rel="stylesheet" href="styles.css?v=29" />
+  <!-- Preload the module graph so the browser fetches these in parallel
+       instead of discovering them one-by-one down the import chain. -->
+  <link rel="modulepreload" href="js/input2.js?v=29" />
+  <link rel="modulepreload" href="js/store.js?v=29" />
+  <link rel="modulepreload" href="js/api.js?v=29" />
+  <link rel="modulepreload" href="js/psych.js?v=29" />
+  <link rel="modulepreload" href="js/charts.js?v=29" />
 </head>
 <body>
   <div id="app"></div>
-  <script type="module" src="js/input2.js?v=28"></script>
+  <script type="module" src="js/input2.js?v=29"></script>
 </body>
 </html>
