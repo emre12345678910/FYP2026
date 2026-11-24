@@ -171,8 +171,12 @@ async function initFirebase() {
   if (_fb) return _fb;
   if (!firebaseConfigured()) throw new Error('Firebase config is empty');
   const V = '10.12.2';
-  const appMod = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-app.js`);
-  const fsMod = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-firestore.js`);
+  // Load the two SDK modules in PARALLEL (not sequentially) so the cloud sync
+  // comes up about twice as fast on a cold load.
+  const [appMod, fsMod] = await Promise.all([
+    import(`https://www.gstatic.com/firebasejs/${V}/firebase-app.js`),
+    import(`https://www.gstatic.com/firebasejs/${V}/firebase-firestore.js`),
+  ]);
   const app = appMod.initializeApp(CONFIG.FIREBASE);
   const db = fsMod.getFirestore(app);
   const ref = fsMod.doc(db, FB_COLLECTION, FB_DOC);
