@@ -16,9 +16,9 @@ import {
   addFoodItem, removeFoodItem, setCalorieTarget, setManualKcal,
   calorieTargetInfo, calorieWeekSeries,
   BP_TIMINGS, INTENSITY_LEVELS, PAIN_SYMPTOMS,
-} from './store.js?v=31';
-import { QUESTIONNAIRES, itemId } from './psych.js?v=31';
-import { hydrationWeekChart, bpWeekChart, bodyMassWeekChart, sleepChart, calorieWeekChart } from './charts.js?v=31';
+} from './store.js?v=33';
+import { QUESTIONNAIRES, itemId } from './psych.js?v=33';
+import { hydrationWeekChart, bpWeekChart, bodyMassWeekChart, sleepChart, calorieWeekChart } from './charts.js?v=33';
 
 const root = document.getElementById('app');
 // section = top-level ('physio' | 'mental'); physioSub = 'daily' | 'training'
@@ -507,9 +507,6 @@ function nutritionCard(a) {
   const portionBtns = [0.5, 1, 1.5, 2].map((p) =>
     `<button type="button" class="portion-btn ${p === portion ? 'sel' : ''}" data-portion="${p}">${p}x</button>`).join('');
 
-  const quickBtns = [-500, -250, 250, 500]
-    .map((d) => `<button type="button" class="cal-quick" data-cal-delta="${d}">${d > 0 ? '+' : ''}${d}</button>`).join('');
-
   // Day-type chip colour: light=green, mixed=yellow, heavy=red.
   const dayCls = info.dayType === 'heavy' ? 'red' : info.dayType === 'mixed' ? 'yellow' : 'green';
   const rangeTxt = info.rangeLo != null
@@ -529,7 +526,7 @@ function nutritionCard(a) {
     <!-- Calories consumed panel -->
     <div class="cal-panel">
       <div class="cal-head">
-        <div><span class="cal-big" style="color:${calColor}">${kcalFmt(consumed)}</span> <span class="cal-unit">kcal consumed</span></div>
+        <div><span class="cal-big">${kcalFmt(consumed)}</span> <span class="cal-unit">kcal consumed</span></div>
         <div class="cal-balance">
           <span class="tier ${bal.cls}">${esc(bal.label)}</span>
           ${bal.diff != null ? `<div class="muted small">${bal.diff > 0 ? '+' : ''}${kcalFmt(bal.diff)} kcal vs goal</div>` : ''}
@@ -543,8 +540,9 @@ function nutritionCard(a) {
         ${usingOverride ? '<span class="tier small" style="background:rgba(78,161,255,.15);color:var(--blue)">custom</span>' : ''}
       </div>
 
-      <!-- Progress bar: fills + turns greener toward the goal, red once over -->
-      <div class="cal-progress"><div class="cal-progress-fill" style="width:${progressPct}%;background:${calColor}"></div></div>
+      <!-- Progress bar: shows % of goal (neutral colour; the slider conveys
+           the green→red proximity). -->
+      <div class="cal-progress"><div class="cal-progress-fill" style="width:${progressPct}%"></div></div>
       <div class="cal-progress-scale"><span class="muted small">0</span><span class="muted small">${pctOfGoal}% of goal</span><span class="muted small">${kcalFmt(target)}</span></div>
 
       <!-- Total-consumed slider. The handle = food log + quick-entry, so
@@ -553,7 +551,7 @@ function nutritionCard(a) {
            the food total adds the difference as quick-entry calories. -->
       <label class="cal-slider-label" for="cal-slider">Total calories consumed <span class="muted small">(logged meals + quick-entry — drag or type to add)</span></label>
       <div class="cal-slider-row">
-        <input type="range" class="cal-slider" id="cal-slider" min="0" max="${SLIDER_MAX}" step="50" value="${Math.min(SLIDER_MAX, consumed)}" data-food-floor="${foodTotal}" aria-label="Total calories consumed">
+        <input type="range" class="cal-slider" id="cal-slider" min="0" max="${SLIDER_MAX}" step="50" value="${Math.min(SLIDER_MAX, consumed)}" data-food-floor="${foodTotal}" style="accent-color:${calColor}" aria-label="Total calories consumed">
         <input type="number" class="cal-manual-num" id="cal-manual-num" min="${foodTotal}" step="10" value="${consumed || ''}" placeholder="0" data-food-floor="${foodTotal}" aria-label="Total calories consumed">
         <span class="muted small">kcal</span>
       </div>
@@ -567,7 +565,6 @@ function nutritionCard(a) {
           <span class="muted small">kcal</span>
           <button type="button" class="ghost cal-goal-reset" id="cal-goal-reset" title="Reset to the training-load recommendation">↺ Recommended</button>
         </div>
-        <div class="cal-quick-row">${quickBtns}</div>
       </div>
     </div>
 
@@ -1006,14 +1003,6 @@ function bindNutrition(a) {
   if (goalReset) goalReset.addEventListener('click', () => {
     setCalorieTarget(a.id, calorieTargetInfo(a).recommended); render();
   });
-  // ±N buttons nudge the current goal (the goal line, not consumed).
-  root.querySelectorAll('.cal-quick').forEach((b) => b.addEventListener('click', () => {
-    const recommended = calorieTargetInfo(a).recommended;
-    const today = getNutritionToday(a.id);
-    const base = today.target != null ? today.target : recommended;
-    setCalorieTarget(a.id, base + Number(b.dataset.calDelta || 0));
-    render();
-  }));
 
   // Manual food add (note + kcal) to the food log.
   const addBtn = root.querySelector('#food-add');

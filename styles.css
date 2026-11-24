@@ -757,7 +757,7 @@ a.ghost { text-decoration: none; display: inline-flex; align-items: center; }
 
 /* Progress toward goal: width = % of goal, colour set inline (amber→green→red) */
 .cal-progress { height: 16px; background: #0e141b; border: 1px solid var(--line); border-radius: 999px; overflow: hidden; }
-.cal-progress-fill { height: 100%; border-radius: 999px; transition: width .3s, background .3s; }
+.cal-progress-fill { height: 100%; border-radius: 999px; background: var(--accent); transition: width .3s; }
 .cal-progress-scale { display: flex; justify-content: space-between; align-items: center; }
 @media (max-width: 560px) { .cal-goal-banner-value { margin-left: 0; } }
 .cal-slider { width: 100%; accent-color: var(--accent); cursor: pointer; flex: 1 1 auto; }
@@ -778,11 +778,7 @@ a.ghost { text-decoration: none; display: inline-flex; align-items: center; }
 .cal-scale span:nth-child(2) { text-align: center; }
 .food-search { background: #0e141b; color: var(--text); border: 1px solid var(--line); border-radius: 8px; padding: 9px 12px; font-size: 14px; font-family: inherit; width: 100%; }
 .food-search:focus { outline: none; border-color: var(--blue); }
-.cal-quick-row { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; }
-.cal-quick { background: var(--panel); color: var(--text); border: 1px solid var(--line); border-radius: 999px; padding: 9px 10px; font-size: 13px; font-weight: 700; cursor: pointer; }
-.cal-quick:hover { border-color: var(--muted); }
-.cal-quick.target { color: var(--blue); border-color: var(--blue); }
-@media (max-width: 560px) { .cal-quick-row { grid-template-columns: repeat(3, 1fr); } }
+
 
 .nutri-toggle { align-self: flex-start; }
 
