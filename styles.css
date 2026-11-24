@@ -728,3 +728,58 @@ a.ghost { text-decoration: none; display: inline-flex; align-items: center; }
 .bm-trend .hist-chart { margin-bottom: 0; }
 .bm-log-btn { align-self: stretch; width: 100%; padding: 14px; font-size: 16px; }
 @media (max-width: 560px) { .bm-top { grid-template-columns: 1fr; } }
+
+/* ============================== Nutrition card ========================== */
+.nutrition-card { gap: 16px; }
+
+/* Calorie slider panel (mirrors the sketch's top block) */
+.cal-panel { background: var(--panel-2); border: 1px solid var(--line); border-radius: 12px; padding: 16px 18px; display: flex; flex-direction: column; gap: 12px; }
+.cal-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 14px; flex-wrap: wrap; }
+.cal-big { font-size: 34px; font-weight: 800; color: var(--text); line-height: 1; }
+.cal-unit { font-size: 15px; color: var(--muted); font-weight: 600; }
+.cal-balance { text-align: right; }
+.cal-balance .tier { font-size: 13px; }
+.cal-slider { width: 100%; accent-color: var(--accent); cursor: pointer; }
+.cal-scale { display: flex; justify-content: space-between; align-items: center; }
+.cal-scale span:nth-child(2) { text-align: center; }
+.cal-quick-row { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; }
+.cal-quick { background: var(--panel); color: var(--text); border: 1px solid var(--line); border-radius: 999px; padding: 9px 10px; font-size: 13px; font-weight: 700; cursor: pointer; }
+.cal-quick:hover { border-color: var(--muted); }
+.cal-quick.target { color: var(--blue); border-color: var(--blue); }
+@media (max-width: 560px) { .cal-quick-row { grid-template-columns: repeat(3, 1fr); } }
+
+.nutri-toggle { align-self: flex-start; }
+
+/* Two-column food log + estimator */
+.nutri-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.nutri-col { background: var(--panel-2); border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; display: flex; flex-direction: column; gap: 10px; }
+.nutri-col-head { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
+.nutri-col-head h4 { margin: 0; font-size: 15px; color: var(--accent); }
+@media (max-width: 700px) { .nutri-cols { grid-template-columns: 1fr; } }
+
+/* Food add row */
+.food-add-row { display: grid; grid-template-columns: 1fr 90px auto; gap: 8px; }
+.food-note-input, .food-kcal-input { background: #0e141b; color: var(--text); border: 1px solid var(--line); border-radius: 8px; padding: 9px 10px; font-size: 14px; font-family: inherit; }
+
+/* Logged food items */
+.food-list { display: flex; flex-direction: column; gap: 8px; }
+.food-item { display: grid; grid-template-columns: 1fr auto auto; gap: 10px; align-items: center; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 8px 12px; }
+.food-item-note { font-weight: 700; font-size: 14px; }
+.food-item-kcal { font-size: 14px; font-weight: 700; white-space: nowrap; }
+.food-del { background: transparent; color: var(--muted); border: none; font-size: 18px; line-height: 1; cursor: pointer; padding: 0 4px; }
+.food-del:hover { color: var(--red); }
+.food-sum-row { display: flex; justify-content: space-between; align-items: center; gap: 10px; border-top: 1px solid var(--line); padding-top: 10px; margin-top: 2px; }
+
+/* HPB food database list */
+.food-db { display: flex; flex-direction: column; gap: 8px; max-height: 260px; overflow-y: auto; }
+.food-db-item { text-align: left; background: var(--panel); color: var(--text); border: 1px solid var(--line); border-radius: 999px; padding: 10px 14px; font-size: 14px; cursor: pointer; }
+.food-db-item:hover { border-color: var(--muted); }
+.food-db-item.sel { border-color: var(--blue); box-shadow: 0 0 0 1px var(--blue) inset; color: var(--blue); }
+
+/* Portion multiplier */
+.portion-row { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+.portion-btns { display: flex; gap: 6px; }
+.portion-btn { background: var(--panel); color: var(--text); border: 1px solid var(--line); border-radius: 999px; padding: 6px 14px; font-size: 13px; font-weight: 700; cursor: pointer; }
+.portion-btn.sel { border-color: var(--blue); color: var(--blue); box-shadow: 0 0 0 1px var(--blue) inset; }
+.food-sel-preview { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 10px 14px; font-size: 14px; display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+.food-estimate-add { width: 100%; }

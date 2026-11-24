@@ -1,7 +1,7 @@
 // store.js — persistence + Singapore Time + core domain logic
 // Zero dependencies. Data persists in localStorage.
 
-import { CONFIG, pushKey, pushAll, pullState, startSync, isShared, resolveBackend, activeBackend, KEYS } from './api.js?v=21';
+import { CONFIG, pushKey, pushAll, pullState, startSync, isShared, resolveBackend, activeBackend, KEYS } from './api.js?v=22';
 
 export const SGT = 'Asia/Singapore';
 const STORAGE_KEY = 'eastside_fc_checkins_v1';
@@ -446,6 +446,113 @@ export function exerciseMinutesToday(athleteId) {
     .reduce((sum, c) => sum + (Number(c.duration_mins) || 0), 0);
 }
 
+/* ---------------------------- Nutrition (kcal) --------------------------- */
+// Per-athlete, per-SGT-day calorie tracking, mirroring the hydration store.
+// Record shape: { foods: [{ id, note, kcal, label, sgt, utc }], target }.
+//   foods  — logged food items (each with a kcal value).
+//   target — the athlete's daily calorie goal/maintenance for that day.
+const NUTRITION_KEY = 'eastside_fc_nutrition_v1';
+
+// Singapore HPB (Health Promotion Board) local-food calorie estimates (kcal
+// per standard serving). Values are rounded typical portions used for a quick
+// estimate — coaches/athletes can always log an exact kcal manually.
+export const HPB_FOODS = [
+  { name: 'Steamed Chicken Rice', kcal: 600 },
+  { name: 'Sliced Fish Soup + Rice', kcal: 450 },
+  { name: 'Cai Png (2 Veg 1 Meat)', kcal: 650 },
+  { name: 'Nasi Lemak', kcal: 650 },
+  { name: 'Whey Protein Shake', kcal: 150 },
+  { name: 'Chicken Breast (150g)', kcal: 250 },
+  { name: 'Wholemeal Bread (2 slices)', kcal: 140 },
+  { name: '2 Eggs (boiled)', kcal: 160 },
+  { name: 'Mee Soto', kcal: 480 },
+  { name: 'Fishball Noodles (dry)', kcal: 500 },
+  { name: 'Yong Tau Foo (soup, 7 pcs)', kcal: 400 },
+  { name: 'Thunder Tea Rice', kcal: 420 },
+  { name: 'Banana', kcal: 105 },
+  { name: 'Greek Yogurt (150g)', kcal: 130 },
+  { name: 'Kopi O (no sugar)', kcal: 10 },
+];
+
+// Default daily maintenance calories: ~37 kcal per kg of body weight for an
+// active combat athlete (mid of the ~33–40 active range). Falls back to 2800.
+const KCAL_PER_KG = 37;
+export const DEFAULT_MAINTENANCE_KCAL = 2800;
+export function maintenanceKcal(athlete) {
+  const w = athlete && athlete.currentWeight ? Number(athlete.currentWeight) : null;
+  return w ? Math.round((w * KCAL_PER_KG) / 10) * 10 : DEFAULT_MAINTENANCE_KCAL;
+}
+
+function getNutritionStore() {
+  const raw = localStorage.getItem(NUTRITION_KEY);
+  return raw ? JSON.parse(raw) : {};
+}
+
+// Normalises a stored record to { foods: [], target: number|null }.
+function normNutrition(rec) {
+  if (!rec) return { foods: [], target: null };
+  return { foods: Array.isArray(rec.foods) ? rec.foods : [], target: rec.target ?? null };
+}
+
+// Today's (SGT) nutrition record for an athlete.
+export function getNutritionToday(athleteId) {
+  return normNutrition(getNutritionStore()[`${athleteId}|${sgtNow().date}`]);
+}
+
+// Nutrition record for an athlete on a specific SGT day.
+export function getNutritionForDay(athleteId, sgtDayKey) {
+  return normNutrition(getNutritionStore()[`${athleteId}|${sgtDayKey}`]);
+}
+
+// Sum of today's logged food kcal for an athlete.
+export function nutritionKcalToday(athleteId) {
+  return getNutritionToday(athleteId).foods.reduce((s, f) => s + (Number(f.kcal) || 0), 0);
+}
+
+// Adds a food item to today's log. note = label, kcal = calories (number).
+// portion multiplies the kcal (e.g. 1.5x). Returns the updated record.
+export function addFoodItem(athleteId, note, kcal, portion = 1) {
+  const ts = sgtNow();
+  const store = getNutritionStore();
+  const key = `${athleteId}|${ts.date}`;
+  const rec = normNutrition(store[key]);
+  const cal = Math.round((Number(kcal) || 0) * (Number(portion) || 1));
+  rec.foods.push({
+    id: 'food_' + Date.now() + Math.floor(Math.random() * 1000),
+    note: String(note || '').trim() || 'Food item',
+    kcal: cal,
+    portion: Number(portion) || 1,
+    sgt: ts.sgt, utc: ts.utc, label: ts.label,
+  });
+  store[key] = rec;
+  persist(NUTRITION_KEY, JSON.stringify(store));
+  return { ...rec };
+}
+
+// Removes a food item (by id) from today's log.
+export function removeFoodItem(athleteId, foodId) {
+  const day = sgtNow().date;
+  const store = getNutritionStore();
+  const key = `${athleteId}|${day}`;
+  const rec = normNutrition(store[key]);
+  rec.foods = rec.foods.filter((f) => f.id !== foodId);
+  store[key] = rec;
+  persist(NUTRITION_KEY, JSON.stringify(store));
+  return { ...rec };
+}
+
+// Sets today's calorie target (the slider / maintenance goal) for an athlete.
+export function setCalorieTarget(athleteId, target) {
+  const day = sgtNow().date;
+  const store = getNutritionStore();
+  const key = `${athleteId}|${day}`;
+  const rec = normNutrition(store[key]);
+  rec.target = Math.max(0, Math.round(Number(target) || 0));
+  store[key] = rec;
+  persist(NUTRITION_KEY, JSON.stringify(store));
+  return { ...rec };
+}
+
 // Deletes an athlete and all of their associated data: check-ins, coach
 // override, and hydration records. Returns true if the athlete existed.
 export function deleteAthlete(id) {
@@ -473,6 +580,14 @@ export function deleteAthlete(id) {
   }
   if (changed) persist(HYDRATION_KEY, JSON.stringify(hyd));
 
+  // Remove their nutrition records (keys are "athleteId|SGTday").
+  const nut = getNutritionStore();
+  let nutChanged = false;
+  for (const key of Object.keys(nut)) {
+    if (key.startsWith(id + '|')) { delete nut[key]; nutChanged = true; }
+  }
+  if (nutChanged) persist(NUTRITION_KEY, JSON.stringify(nut));
+
   return true;
 }
 
@@ -495,6 +610,7 @@ export function exportData() {
       [MENTAL_KEY]: getMentalLogs(),
       [OVERRIDE_KEY]: getOverrides(),
       [HYDRATION_KEY]: getHydrationStore(),
+      [NUTRITION_KEY]: getNutritionStore(),
     },
   };
 }
@@ -514,6 +630,7 @@ export function importData(bundle, mode = 'replace') {
   const incomingMental = d[MENTAL_KEY] || [];
   const incomingOverrides = d[OVERRIDE_KEY] || {};
   const incomingHydration = d[HYDRATION_KEY] || {};
+  const incomingNutrition = d[NUTRITION_KEY] || {};
 
   if (mode === 'replace') {
     persist(ATHLETE_KEY, JSON.stringify(incomingAthletes));
@@ -521,6 +638,7 @@ export function importData(bundle, mode = 'replace') {
     persist(MENTAL_KEY, JSON.stringify(incomingMental));
     persist(OVERRIDE_KEY, JSON.stringify(incomingOverrides));
     persist(HYDRATION_KEY, JSON.stringify(incomingHydration));
+    persist(NUTRITION_KEY, JSON.stringify(incomingNutrition));
     return { mode, athletes: incomingAthletes.length, checkins: incomingCheckins.length };
   }
 
@@ -549,6 +667,10 @@ export function importData(bundle, mode = 'replace') {
   const hyd = getHydrationStore();
   for (const [k, v] of Object.entries(incomingHydration)) if (!hyd[k]) hyd[k] = v;
   persist(HYDRATION_KEY, JSON.stringify(hyd));
+
+  const nut = getNutritionStore();
+  for (const [k, v] of Object.entries(incomingNutrition)) if (!nut[k]) nut[k] = v;
+  persist(NUTRITION_KEY, JSON.stringify(nut));
 
   return { mode, athletes: addedAthletes, checkins: addedCheckins };
 }
