@@ -6,17 +6,23 @@
   <link rel="preconnect" href="https://www.gstatic.com" crossorigin />
   <link rel="preconnect" href="https://firestore.googleapis.com" crossorigin />
   <title>Eastside FC — Athlete Daily Log</title>
-  <link rel="stylesheet" href="styles.css?v=29" />
+  <link rel="stylesheet" href="styles.css?v=30" />
   <!-- Preload the module graph so the browser fetches these in parallel
        instead of discovering them one-by-one down the import chain. -->
-  <link rel="modulepreload" href="js/input2.js?v=29" />
-  <link rel="modulepreload" href="js/store.js?v=29" />
-  <link rel="modulepreload" href="js/api.js?v=29" />
-  <link rel="modulepreload" href="js/psych.js?v=29" />
-  <link rel="modulepreload" href="js/charts.js?v=29" />
+  <link rel="modulepreload" href="js/input2.js?v=30" />
+  <link rel="modulepreload" href="js/store.js?v=30" />
+  <link rel="modulepreload" href="js/api.js?v=30" />
+  <link rel="modulepreload" href="js/psych.js?v=30" />
+  <link rel="modulepreload" href="js/charts.js?v=30" />
 </head>
 <body>
-  <div id="app"></div>
-  <script type="module" src="js/input2.js?v=29"></script>
+  <div id="app">
+    <div style="max-width:640px;margin:48px auto;padding:20px;font-family:system-ui,sans-serif;color:#8b9aab;text-align:center">
+      <div style="font-size:28px">🥊</div>
+      <p>Loading Eastside FC…</p>
+      <noscript style="color:#ff5d6c">This app needs JavaScript enabled.</noscript>
+    </div>
+  </div>
+  <script type="module" src="js/input2.js?v=30"></script>
 </body>
 </html>
