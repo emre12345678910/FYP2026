@@ -7,17 +7,19 @@ import {
   getAthletes, checkinsForAthlete, mentalLogsForAthlete,
   bpCategory, formatHoursMinutes, formatSgt, sgtDay, sgtWeek, sgtNow,
   hydrationMlForDay, hydrationGoalMl, getHydrationForDay, lastBodyMass,
+  calorieTargetInfo, getNutritionToday, nutritionKcalToday, calorieWeekSeries,
   getOverride, exportData, importData, pullState, startSync, isShared, resolveBackend, activeBackend,
-} from './store.js?v=23';
-import { evaluateAthlete, readinessTier, evaluateReadinessStatus, tierMeta } from './alerts.js?v=23';
+} from './store.js?v=24';
+import { evaluateAthlete, readinessTier, evaluateReadinessStatus, tierMeta } from './alerts.js?v=24';
 import {
   srpeChart, painChart, sleepChart, hydrationWeekChart, bpWeekChart, bodyMassWeekChart,
+  calorieWeekChart,
   restqProfileChart, restqBalanceChart, pomsProfileChart, pomsTmdChart,
   tsciChart, smsProfileChart, smsRaiChart, weeklyTrendChart,
-} from './charts.js?v=23';
+} from './charts.js?v=24';
 import {
   QUESTIONNAIRES, scoreRestq, scorePoms, scoreTsci, scoreSms,
-} from './psych.js?v=23';
+} from './psych.js?v=24';
 
 const root = document.getElementById('app');
 // tab: 'physio' | 'psych' ; physioSub: 'daily' | 'training' | 'pain'
@@ -386,6 +388,38 @@ function bpInsight(checkins) {
   return { reading: `${c.bp_systolic}/${c.bp_diastolic} mmHg`, cat };
 }
 
+// Nutrition: today's training-load day type, recommended calorie range, the
+// athlete's effective target (custom override or recommended), logged kcal and
+// how they balance. Read-only — the dashboard never edits nutrition.
+function nutritionInsight(a) {
+  const info = calorieTargetInfo(a);                 // day type + recommended range
+  const today = getNutritionToday(a.id);
+  const logged = nutritionKcalToday(a.id);
+  const target = today.target != null ? today.target : info.recommended;
+  const custom = today.target != null && today.target !== info.recommended;
+  const dayCls = info.dayType === 'heavy' ? 'red' : info.dayType === 'mixed' ? 'yellow' : 'green';
+
+  let balLabel, balCls;
+  if (!logged) { balLabel = 'Nothing logged yet'; balCls = 'muted'; }
+  else {
+    const diff = logged - target;
+    const pct = Math.round((logged / target) * 100);
+    if (diff <= -500) { balLabel = `Aggressive deficit (${pct}%)`; balCls = 'red'; }
+    else if (diff < -100) { balLabel = `Deficit (${pct}%)`; balCls = 'yellow'; }
+    else if (diff <= 100) { balLabel = `On target (${pct}%)`; balCls = 'green'; }
+    else if (diff < 500) { balLabel = `Surplus (${pct}%)`; balCls = 'yellow'; }
+    else { balLabel = `Large surplus (${pct}%)`; balCls = 'red'; }
+  }
+  const rangeTxt = info.rangeLo != null
+    ? `${info.rangeLo.toLocaleString('en-US')}–${info.rangeHi.toLocaleString('en-US')} kcal (${info.lo}–${info.hi} kcal/kg)`
+    : `${info.lo}–${info.hi} kcal/kg — no body weight on file`;
+  return {
+    dayType: info.dayType, dayLabel: info.label, dayCls,
+    recommended: info.recommended, target, custom, logged, rangeTxt,
+    balLabel, balCls, items: today.foods.length,
+  };
+}
+
 // The big combined interpretation box for the Daily sub-tab.
 function dailyInsightBox(a, checkins) {
   const hyd = hydrationInsight(a);
@@ -393,6 +427,8 @@ function dailyInsightBox(a, checkins) {
   const slp = sleepInsight(checkins);
   const bm = bodyMassInsight(checkins);
   const bp = bpInsight(checkins);
+  const nut = nutritionInsight(a);
+  const kcal = (n) => Math.round(n).toLocaleString('en-US');
 
   const row = (title, inner) => `<div class="insight-row"><div class="insight-k">${title}</div><div class="insight-v">${inner}</div></div>`;
 
@@ -436,6 +472,10 @@ function dailyInsightBox(a, checkins) {
     ${row('🩺 Blood Pressure', bp
       ? `<strong>${esc(bp.reading)}</strong> ${bp.cat ? `<span class="tier ${bp.cat.cls}">${bp.cat.label}</span>` : ''}`
       : '<span class="muted">No blood-pressure readings yet.</span>')}
+    ${row('🍽️ Nutrition', `
+      <div><span class="tier ${nut.dayCls}">${esc(nut.dayLabel)}</span> <span class="muted small">· ${esc(nut.rangeTxt)}</span></div>
+      <div class="hydration-today-big">${kcal(nut.logged)} / ${kcal(nut.target)} kcal <span class="tier ${nut.balCls}">${esc(nut.balLabel)}</span></div>
+      <div class="muted small">Target: ${kcal(nut.target)} kcal${nut.custom ? ' (athlete override)' : ' (training-load recommended)'} · ${nut.items} item${nut.items === 1 ? '' : 's'} logged today</div>`)}
   </section>`;
 }
 
@@ -452,12 +492,30 @@ function dailyPanel(a, checkins) {
   const goalMl = hydrationGoalMl(a, 0).total;
   const last7 = last7Days().map((d) => ({ label: d.label, ml: hydrationMlForDay(a.id, d.key) }));
 
+  const calSeries = calorieWeekSeries(a);
+
   return `
     ${dailyInsightBox(a, checkins)}
     ${aspectSection('💧 Hydration', hydrationWeekChart(last7, goalMl), hydrationLogTable(a))}
+    ${aspectSection('🍽️ Nutrition', calorieWeekChart(calSeries), calorieLogTable(calSeries))}
     ${aspectSection('⚖️ Body Mass', bodyMassWeekChart(bmSeries), bodyMassLogTable(checkins))}
     ${aspectSection('🩺 Blood Pressure', bpWeekChart(bpDays), bpLogTable(checkins))}
     ${aspectSection('😴 Sleep', sleepChart(sleepSeries), sleepLogTable(checkins))}`;
+}
+
+// Weekly calorie log table (logged vs target vs balance) for the coach.
+function calorieLogTable(series) {
+  const logged = series.filter((d) => d.logged > 0);
+  if (!logged.length) return '<p class="muted">No calories logged in the last 7 days.</p>';
+  const kcal = (n) => Math.round(n).toLocaleString('en-US');
+  const rows = series.slice().reverse().map((d) => {
+    const diff = d.logged - d.target;
+    const cls = d.logged === 0 ? '' : Math.abs(diff) <= 150 ? 'cell-up' : diff < 0 ? 'cell-yellow' : 'cell-red';
+    return `<tr><td>${esc(d.label)}</td><td>${d.logged ? kcal(d.logged) + ' kcal' : '—'}</td>
+      <td>${kcal(d.target)} kcal</td>
+      <td class="${cls}">${d.logged ? (diff > 0 ? '+' : '') + kcal(diff) + ' kcal' : '—'}</td></tr>`;
+  }).join('');
+  return `<div class="table-wrap"><table class="data-table"><thead><tr><th>Day</th><th>Logged</th><th>Target</th><th>Balance</th></tr></thead><tbody>${rows}</tbody></table></div>`;
 }
 
 // 7 SGT days ending today (for hydration weekly series).
