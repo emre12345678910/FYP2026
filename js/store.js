@@ -1,7 +1,7 @@
 // store.js — persistence + Singapore Time + core domain logic
 // Zero dependencies. Data persists in localStorage.
 
-import { CONFIG, pushKey, pushAll, pullState, startSync, isShared, resolveBackend, activeBackend, KEYS } from './api.js?v=25';
+import { CONFIG, pushKey, pushAll, pullState, startSync, isShared, resolveBackend, activeBackend, KEYS } from './api.js?v=26';
 
 export const SGT = 'Asia/Singapore';
 const STORAGE_KEY = 'eastside_fc_checkins_v1';
@@ -515,28 +515,30 @@ export const HPB_FOODS = [
   { name: 'Milo (hot, 1 cup)', kcal: 200 },
   { name: 'Coconut Water (1 cup)', kcal: 45 },
   { name: 'Isotonic Drink (500ml)', kcal: 130 },
-  // --- Raw ingredients & simple portions (per the stated amount) ---
-  { name: 'Rice, cooked (1 bowl, ~200g)', kcal: 260 },
-  { name: 'Rice, cooked (100g)', kcal: 130 },
-  { name: 'Brown rice, cooked (100g)', kcal: 112 },
-  { name: 'Chicken breast, cooked (100g)', kcal: 165 },
-  { name: 'Chicken thigh, cooked (100g)', kcal: 209 },
-  { name: 'Beef, lean cooked (100g)', kcal: 250 },
-  { name: 'Salmon, cooked (100g)', kcal: 206 },
-  { name: 'White fish, cooked (100g)', kcal: 110 },
+  // --- Raw ingredients (weigh-by-gram). `per100g` = kcal per 100 g; `kcal`
+  // is the default-serving estimate (100 g, or a typical portion) shown in the
+  // list. When one of these is selected the estimator offers a grams input. ---
+  { name: 'Rice, cooked', kcal: 130, per100g: 130, grams: 200 },      // ~1 bowl = 200g = 260
+  { name: 'Brown rice, cooked', kcal: 112, per100g: 112, grams: 200 },
+  { name: 'Chicken breast, cooked', kcal: 165, per100g: 165, grams: 150 },
+  { name: 'Chicken thigh, cooked', kcal: 209, per100g: 209, grams: 150 },
+  { name: 'Beef, lean cooked', kcal: 250, per100g: 250, grams: 150 },
+  { name: 'Salmon, cooked', kcal: 206, per100g: 206, grams: 150 },
+  { name: 'White fish, cooked', kcal: 110, per100g: 110, grams: 150 },
+  { name: 'Tofu, firm', kcal: 144, per100g: 144, grams: 200 },
+  { name: 'Prawns, cooked', kcal: 99, per100g: 99, grams: 150 },
+  { name: 'Pasta, cooked', kcal: 131, per100g: 131, grams: 200 },
+  { name: 'Noodles, cooked', kcal: 138, per100g: 138, grams: 200 },
+  { name: 'Potato, boiled', kcal: 87, per100g: 87, grams: 150 },
+  { name: 'Sweet potato, boiled', kcal: 90, per100g: 90, grams: 150 },
+  { name: 'Oats, dry', kcal: 389, per100g: 389, grams: 50 },
+  { name: 'Broccoli, cooked', kcal: 35, per100g: 35, grams: 100 },
+  { name: 'Mixed vegetables', kcal: 45, per100g: 45, grams: 100 },
+  { name: 'Avocado', kcal: 160, per100g: 160, grams: 100 },
+  // --- Fixed-portion raw items (counted/served, not weighed) ---
   { name: 'Egg, whole (per 1, ~50g)', kcal: 78 },
   { name: 'Egg white (per 1)', kcal: 17 },
-  { name: 'Tofu, firm (100g)', kcal: 144 },
-  { name: 'Prawns, cooked (100g)', kcal: 99 },
-  { name: 'Pasta, cooked (100g)', kcal: 131 },
-  { name: 'Noodles, cooked (100g)', kcal: 138 },
   { name: 'Bread, white (1 slice)', kcal: 75 },
-  { name: 'Potato, boiled (100g)', kcal: 87 },
-  { name: 'Sweet potato, boiled (100g)', kcal: 90 },
-  { name: 'Oats, dry (100g)', kcal: 389 },
-  { name: 'Broccoli, cooked (100g)', kcal: 35 },
-  { name: 'Mixed vegetables (100g)', kcal: 45 },
-  { name: 'Avocado (100g)', kcal: 160 },
   { name: 'Olive oil (1 tbsp)', kcal: 119 },
   { name: 'Peanut butter (1 tbsp)', kcal: 95 },
   { name: 'Almonds (28g / ~23 nuts)', kcal: 164 },
