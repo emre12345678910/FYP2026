@@ -1,7 +1,7 @@
 // store.js — persistence + Singapore Time + core domain logic
 // Zero dependencies. Data persists in localStorage.
 
-import { CONFIG, pushKey, pushAll, pullState, startSync, isShared, resolveBackend, activeBackend, KEYS } from './api.js?v=22';
+import { CONFIG, pushKey, pushAll, pullState, startSync, isShared, resolveBackend, activeBackend, KEYS } from './api.js?v=23';
 
 export const SGT = 'Asia/Singapore';
 const STORAGE_KEY = 'eastside_fc_checkins_v1';
@@ -457,30 +457,119 @@ const NUTRITION_KEY = 'eastside_fc_nutrition_v1';
 // per standard serving). Values are rounded typical portions used for a quick
 // estimate — coaches/athletes can always log an exact kcal manually.
 export const HPB_FOODS = [
+  // --- Rice & mixed-rice dishes ---
   { name: 'Steamed Chicken Rice', kcal: 600 },
-  { name: 'Sliced Fish Soup + Rice', kcal: 450 },
+  { name: 'Roasted Chicken Rice', kcal: 610 },
   { name: 'Cai Png (2 Veg 1 Meat)', kcal: 650 },
-  { name: 'Nasi Lemak', kcal: 650 },
+  { name: 'Cai Png (3 Veg 1 Meat)', kcal: 600 },
+  { name: 'Nasi Lemak (w/ chicken wing)', kcal: 650 },
+  { name: 'Nasi Briyani (chicken)', kcal: 870 },
+  { name: 'Thunder Tea Rice', kcal: 420 },
+  { name: 'Economic Bee Hoon', kcal: 400 },
+  { name: 'Claypot Rice', kcal: 700 },
+  // --- Noodles ---
+  { name: 'Sliced Fish Soup + Rice', kcal: 450 },
+  { name: 'Fishball Noodles (dry)', kcal: 500 },
+  { name: 'Fishball Noodle Soup', kcal: 340 },
+  { name: 'Mee Soto', kcal: 480 },
+  { name: 'Mee Rebus', kcal: 560 },
+  { name: 'Laksa', kcal: 590 },
+  { name: 'Char Kway Teow', kcal: 740 },
+  { name: 'Hokkien Mee', kcal: 630 },
+  { name: 'Wanton Mee (dry)', kcal: 410 },
+  { name: 'Ban Mian (soup)', kcal: 475 },
+  { name: 'Prawn Mee (soup)', kcal: 430 },
+  { name: 'Bak Chor Mee (dry)', kcal: 510 },
+  // --- Malay / Indian ---
+  { name: 'Roti Prata (2 plain)', kcal: 340 },
+  { name: 'Chicken Rice (Hainanese set)', kcal: 607 },
+  { name: 'Mutton Soup (w/ bread)', kcal: 400 },
+  { name: 'Satay (10 sticks, chicken)', kcal: 490 },
+  { name: 'Lontong', kcal: 500 },
+  // --- Soups & lighter mains ---
+  { name: 'Yong Tau Foo (soup, 7 pcs)', kcal: 400 },
+  { name: 'Sliced Fish Bee Hoon Soup', kcal: 370 },
+  { name: 'Porridge (chicken)', kcal: 300 },
+  // --- Proteins & recovery ---
   { name: 'Whey Protein Shake', kcal: 150 },
   { name: 'Chicken Breast (150g)', kcal: 250 },
-  { name: 'Wholemeal Bread (2 slices)', kcal: 140 },
+  { name: 'Grilled Fish Fillet (150g)', kcal: 220 },
+  { name: 'Tofu (200g)', kcal: 150 },
   { name: '2 Eggs (boiled)', kcal: 160 },
-  { name: 'Mee Soto', kcal: 480 },
-  { name: 'Fishball Noodles (dry)', kcal: 500 },
-  { name: 'Yong Tau Foo (soup, 7 pcs)', kcal: 400 },
-  { name: 'Thunder Tea Rice', kcal: 420 },
-  { name: 'Banana', kcal: 105 },
+  { name: 'Hard-boiled Egg (1)', kcal: 78 },
   { name: 'Greek Yogurt (150g)', kcal: 130 },
+  { name: 'Peanut Butter (2 tbsp)', kcal: 190 },
+  // --- Carbs & sides ---
+  { name: 'Wholemeal Bread (2 slices)', kcal: 140 },
+  { name: 'Kaya Toast (2 slices)', kcal: 300 },
+  { name: 'White Rice (1 bowl)', kcal: 280 },
+  { name: 'Brown Rice (1 bowl)', kcal: 220 },
+  { name: 'Oats (1 bowl, cooked)', kcal: 150 },
+  { name: 'Sweet Potato (medium)', kcal: 115 },
+  // --- Fruit & drinks ---
+  { name: 'Banana', kcal: 105 },
+  { name: 'Apple', kcal: 95 },
+  { name: 'Soya Bean Milk (sweet)', kcal: 130 },
+  { name: 'Teh Tarik', kcal: 180 },
   { name: 'Kopi O (no sugar)', kcal: 10 },
+  { name: 'Milo (hot, 1 cup)', kcal: 200 },
+  { name: 'Coconut Water (1 cup)', kcal: 45 },
+  { name: 'Isotonic Drink (500ml)', kcal: 130 },
 ];
 
-// Default daily maintenance calories: ~37 kcal per kg of body weight for an
-// active combat athlete (mid of the ~33–40 active range). Falls back to 2800.
-const KCAL_PER_KG = 37;
+// Training-load-based calorie target for boxers (body weight × kcal/kg factor):
+//   • Light / easy drill ......... 35–40 kcal/kg
+//   • Mixed camp / conditioning .. 45–55 kcal/kg
+//   • Heavy sparring / high-vol .. 60–70 kcal/kg
+// The day type is inferred from that day's logged training (intensity level,
+// session RPE and total minutes). Athletes can still override the target via
+// the slider; this just drives the *recommended* default each day.
 export const DEFAULT_MAINTENANCE_KCAL = 2800;
-export function maintenanceKcal(athlete) {
+
+export const CALORIE_DAY_TYPES = {
+  light: { key: 'light', label: 'Light / rest day', lo: 35, hi: 40 },
+  mixed: { key: 'mixed', label: 'Mixed camp / conditioning', lo: 45, hi: 55 },
+  heavy: { key: 'heavy', label: 'Heavy sparring / high-volume', lo: 60, hi: 70 },
+};
+
+// Classify an athlete's SGT day into a calorie day-type from their training
+// check-ins on that day. Heavy = any Sparring/Max Load session, RPE ≥ 8, or
+// ≥ 90 min total. Mixed = Conditioning, RPE ≥ 5, or ≥ 30 min. Else Light.
+export function calorieDayType(athleteId, sgtDayKey) {
+  const day = sgtDayKey || sgtNow().date;
+  const sessions = getCheckins().filter((c) =>
+    c.athleteId === athleteId && (c.sgtDay || sgtDay(c.timestampUtc)) === day &&
+    (c.intensity_level || c.srpe != null || c.duration_mins != null));
+  if (!sessions.length) return 'light';
+  const minutes = sessions.reduce((s, c) => s + (Number(c.duration_mins) || 0), 0);
+  const maxRpe = sessions.reduce((m, c) => Math.max(m, Number(c.srpe) || 0), 0);
+  const levels = sessions.map((c) => c.intensity_level);
+  const heavyLevel = levels.some((l) => l === 'Sparring' || l === 'Max Load');
+  const mixedLevel = levels.some((l) => l === 'Conditioning');
+  if (heavyLevel || maxRpe >= 8 || minutes >= 90) return 'heavy';
+  if (mixedLevel || maxRpe >= 5 || minutes >= 30) return 'mixed';
+  return 'light';
+}
+
+// Full recommended-calorie breakdown for an athlete on a day. Returns:
+//   { dayType, label, lo, hi, rangeLo, rangeHi, recommended, weight }
+// recommended = midpoint of the kcal/kg range × body weight (rounded to 10).
+export function calorieTargetInfo(athlete, sgtDayKey) {
   const w = athlete && athlete.currentWeight ? Number(athlete.currentWeight) : null;
-  return w ? Math.round((w * KCAL_PER_KG) / 10) * 10 : DEFAULT_MAINTENANCE_KCAL;
+  const dayType = calorieDayType(athlete.id, sgtDayKey);
+  const t = CALORIE_DAY_TYPES[dayType];
+  if (!w) {
+    return { dayType, label: t.label, lo: t.lo, hi: t.hi, rangeLo: null, rangeHi: null, recommended: DEFAULT_MAINTENANCE_KCAL, weight: null };
+  }
+  const rangeLo = Math.round((w * t.lo) / 10) * 10;
+  const rangeHi = Math.round((w * t.hi) / 10) * 10;
+  const recommended = Math.round((w * ((t.lo + t.hi) / 2)) / 10) * 10;
+  return { dayType, label: t.label, lo: t.lo, hi: t.hi, rangeLo, rangeHi, recommended, weight: w };
+}
+
+// The recommended daily calorie goal (training-load based). Falls back to 2800.
+export function maintenanceKcal(athlete, sgtDayKey) {
+  return calorieTargetInfo(athlete, sgtDayKey).recommended;
 }
 
 function getNutritionStore() {
@@ -507,6 +596,27 @@ export function getNutritionForDay(athleteId, sgtDayKey) {
 // Sum of today's logged food kcal for an athlete.
 export function nutritionKcalToday(athleteId) {
   return getNutritionToday(athleteId).foods.reduce((s, f) => s + (Number(f.kcal) || 0), 0);
+}
+
+// Sum of logged food kcal for an athlete on a given SGT day.
+export function nutritionKcalForDay(athleteId, sgtDayKey) {
+  return getNutritionForDay(athleteId, sgtDayKey).foods.reduce((s, f) => s + (Number(f.kcal) || 0), 0);
+}
+
+// Last-7-SGT-days calorie series for an athlete (for the weekly trend chart).
+// Each point: { key, label, logged, target } where target is the day's stored
+// override if present, else the training-load recommended goal for that day.
+export function calorieWeekSeries(athlete) {
+  const out = [];
+  const now = Date.now();
+  for (let i = 6; i >= 0; i--) {
+    const key = sgtDay(new Date(now - i * 86400000).toISOString());
+    const rec = getNutritionForDay(athlete.id, key);
+    const logged = rec.foods.reduce((s, f) => s + (Number(f.kcal) || 0), 0);
+    const target = rec.target != null ? rec.target : calorieTargetInfo(athlete, key).recommended;
+    out.push({ key, label: key.slice(5), logged, target });
+  }
+  return out;
 }
 
 // Adds a food item to today's log. note = label, kcal = calories (number).

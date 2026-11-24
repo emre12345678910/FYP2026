@@ -173,6 +173,8 @@ input:focus, select:focus { outline: none; border-color: var(--blue); }
 .chart .dot-green { fill: var(--green); }
 .chart .dot-yellow { fill: var(--yellow); }
 .chart .bar-srpe { fill: rgba(78,161,255,.55); }
+.chart .bar-kcal { fill: rgba(255,107,53,.6); }
+.chart .line-blue.dashed { stroke-dasharray: 6 4; }
 .chart .bar-pre { fill: #3a6ea5; }
 .chart .bar-post { fill: #8fc0ff; }
 .chart .bar-fueled { fill: rgba(61,220,132,.6); }
@@ -731,6 +733,9 @@ a.ghost { text-decoration: none; display: inline-flex; align-items: center; }
 
 /* ============================== Nutrition card ========================== */
 .nutrition-card { gap: 16px; }
+
+/* Training-load day type + recommended range row */
+.cal-daytype { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 
 /* Calorie slider panel (mirrors the sketch's top block) */
 .cal-panel { background: var(--panel-2); border: 1px solid var(--line); border-radius: 12px; padding: 16px 18px; display: flex; flex-direction: column; gap: 12px; }
