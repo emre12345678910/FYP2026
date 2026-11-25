@@ -758,6 +758,7 @@ a.ghost { text-decoration: none; display: inline-flex; align-items: center; }
 /* Progress toward goal: width = % of goal, colour set inline (amber→green→red) */
 .cal-pct { font-size: 14px; font-weight: 700; color: var(--muted); }
 @media (max-width: 560px) { .cal-goal-banner-value { margin-left: 0; } }
+.cal-slider { flex: 1 1 auto; accent-color: var(--accent); cursor: pointer; }
 .cal-slider-label { font-size: 13px; font-weight: 700; color: var(--text); }
 .cal-slider-row { display: flex; align-items: center; gap: 10px; }
 .cal-manual-num { width: 96px; background: #0e141b; color: var(--text); border: 1px solid var(--line); border-radius: 8px; padding: 9px 10px; font-size: 15px; font-family: inherit; }
