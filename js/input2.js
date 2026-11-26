@@ -1,13 +1,13 @@
 // input.js — Athlete INPUT app controller.
 // Three logs that mirror the dashboard tabs:
-//   • Daily log     — body mass, blood pressure, sleep, hydration
+//   • Daily log     — body mass, sleep, hydration, nutrition
 //   • Training log   — training load, pain & injury
 //   • Mental log     — RESTQ / POMS / TSCI / SMS-II questionnaires
 // Data is written to the same localStorage the Dashboard reads from.
 import {
   getAthletes, addAthlete, updateAthlete, deleteAthlete, saveCheckin, saveMentalLog,
   checkinsForAthlete, mentalLogsForAthlete, lastBodyMass, hydrationMlForDay,
-  bpCategory, sleepHoursBetween, sleepMinutesBetween, trainMinutesBetween, formatHoursMinutes, formatSgt, sgtDay, sgtWeek,
+  sleepHoursBetween, sleepMinutesBetween, trainMinutesBetween, formatHoursMinutes, formatSgt, sgtDay, sgtWeek,
   getHydrationToday, addBottle, removeBottle, DEFAULT_BOTTLE_ML,
   hydrationGoalMl, exerciseMinutesToday,
   exportData, importData, pullState, startSync, isShared, resolveBackend, activeBackend,
@@ -15,10 +15,10 @@ import {
   HPB_FOODS, maintenanceKcal, getNutritionToday, nutritionKcalToday, nutritionFoodKcalToday,
   addFoodItem, removeFoodItem, setCalorieTarget, setManualKcal,
   calorieTargetInfo, calorieWeekSeries,
-  BP_TIMINGS, INTENSITY_LEVELS, PAIN_SYMPTOMS,
-} from './store.js?v=38';
-import { QUESTIONNAIRES, itemId } from './psych.js?v=38';
-import { hydrationWeekChart, bpWeekChart, bodyMassWeekChart, sleepChart, calorieWeekChart } from './charts.js?v=38';
+  INTENSITY_LEVELS, PAIN_SYMPTOMS,
+} from './store.js?v=39';
+import { QUESTIONNAIRES, itemId } from './psych.js?v=39';
+import { hydrationWeekChart, bodyMassWeekChart, sleepChart, calorieWeekChart } from './charts.js?v=39';
 
 const root = document.getElementById('app');
 // section = top-level ('physio' | 'mental'); physioSub = 'daily' | 'training'
@@ -204,19 +204,6 @@ function dailyLog(a) {
         </div>
       </section>
 
-      <!-- Blood Pressure -->
-      <section class="dl-card">
-        <div class="dl-card-head"><h3>Blood Pressure</h3><a href="#" class="hist-link" data-history="bp">History</a></div>
-        <div class="dl-two">
-          <label class="dl-field">Systolic (mmHg)<input type="number" min="40" max="300" name="bp_systolic" id="bp-systolic" placeholder="120"></label>
-          <label class="dl-field">Diastolic (mmHg)<input type="number" min="30" max="200" name="bp_diastolic" id="bp-diastolic" placeholder="80"></label>
-        </div>
-        <label class="dl-field">Timing
-          <select name="bp_timing"><option value="">—</option>${BP_TIMINGS.map((t) => `<option>${t}</option>`).join('')}</select>
-        </label>
-        <div class="dl-inline-status"><span id="bp-category-display" class="muted">—</span></div>
-      </section>
-
       <!-- Sleep -->
       <section class="dl-card">
         <div class="dl-card-head"><h3>Sleep</h3><a href="#" class="hist-link" data-history="sleep">History</a></div>
@@ -400,17 +387,6 @@ function mentalLog(a) {
 }
 
 /* ---------------------------- Shared tables ----------------------------- */
-function bpLogTable(checkins) {
-  const list = checkins.filter((c) => c.bp_systolic != null && c.bp_diastolic != null).slice().reverse();
-  if (!list.length) return '<p class="muted">No blood-pressure readings yet.</p>';
-  const rows = list.map((c) => {
-    const cat = bpCategory(c.bp_systolic, c.bp_diastolic);
-    return `<tr><td>${esc(formatSgt(c.timestampUtc))}</td><td>${c.bp_timing ? `<span class="pill">${esc(c.bp_timing)}</span>` : '—'}</td>
-      <td>${c.bp_systolic}/${c.bp_diastolic} mmHg</td><td>${cat ? `<span class="tier ${cat.cls}">${cat.label}</span>` : '—'}</td></tr>`;
-  }).join('');
-  return `<div class="table-wrap"><table class="data-table"><thead><tr><th>Time (SGT)</th><th>Timing</th><th>Reading</th><th>Category</th></tr></thead><tbody>${rows}</tbody></table></div>`;
-}
-
 function bodyMassLogTable(checkins) {
   const list = checkins.filter((c) => c.body_mass_kg != null).slice().reverse();
   if (!list.length) return '<p class="muted">No body-mass recordings yet.</p>';
@@ -712,23 +688,6 @@ function openHistory(kind, a) {
         <tbody>${series.slice().reverse().map((x) => `<tr><td>${x.label}</td><td>${x.day}</td><td>${(x.ml / 1000).toFixed(1)} L</td>
           <td>${x.ml >= goal ? '<span class="pill ok">Goal reached</span>' : '<span class="pill warn">Under goal</span>'}</td></tr>`).join('')}</tbody></table></div>`;
     return historyModal('Hydration History', sub, body);
-  }
-
-  if (kind === 'bp') {
-    const list = checkins.filter((c) => c.bp_systolic != null && c.bp_diastolic != null);
-    const mean = (arr) => arr.length ? Math.round(arr.reduce((s, v) => s + v, 0) / arr.length * 10) / 10 : 0;
-    const within = list.filter((c) => bpCategory(c.bp_systolic, c.bp_diastolic)?.cls === 'green').length;
-    const series = list.slice(-7).map((c) => ({ label: sgtDay(c.timestampUtc).slice(5), sys: c.bp_systolic, dia: c.bp_diastolic }));
-    const body = `
-      ${summaryCards([
-        { k: 'Avg Systolic', v: mean(list.map((c) => c.bp_systolic)) + ' mmHg' },
-        { k: 'Avg Diastolic', v: mean(list.map((c) => c.bp_diastolic)) + ' mmHg' },
-        { k: 'Reference', v: '&lt;120 / &lt;80', cls: 'accent' },
-        { k: 'Within Reference', v: within + (within === 1 ? ' day' : ' days'), cls: 'green' },
-      ])}
-      <div class="hist-chart">${bpWeekChart(series)}</div>
-      ${bpLogTable(checkins)}`;
-    return historyModal('Blood Pressure History', sub, body);
   }
 
   if (kind === 'sleep') {
@@ -1108,19 +1067,6 @@ function bindDaily(a) {
   if (sleepStart) sleepStart.addEventListener('change', recalcSleep);
   if (sleepEnd) sleepEnd.addEventListener('change', recalcSleep);
 
-  // BP readout
-  const bpSys = root.querySelector('#bp-systolic');
-  const bpDia = root.querySelector('#bp-diastolic');
-  const bpDisplay = root.querySelector('#bp-category-display');
-  function recalcBp() {
-    if (!bpDisplay) return;
-    const cat = bpCategory(bpSys.value, bpDia.value);
-    bpDisplay.className = 'sweat-value';
-    if (cat) { bpDisplay.textContent = cat.label; if (cat.cls === 'red') bpDisplay.classList.add('bp-red'); else if (cat.cls === 'yellow') bpDisplay.classList.add('high'); }
-    else bpDisplay.textContent = '—';
-  }
-  [bpSys, bpDia].forEach((el) => el && el.addEventListener('input', recalcBp));
-
   // Body Mass: live change vs previous recorded weight
   const bodyMassInput = root.querySelector('#body-mass-input');
   if (bodyMassInput) {
@@ -1157,7 +1103,6 @@ function bindDaily(a) {
     saveCheckin({
       athleteId: a.id,
       body_mass_kg: num('body_mass_kg'),
-      bp_systolic: num('bp_systolic'), bp_diastolic: num('bp_diastolic'), bp_timing: str('bp_timing') || null,
       sleep_type: str('sleep_type') || null, sleep_hours: num('sleep_hours'), sleep_minutes: num('sleep_minutes'),
       sleep_start: str('sleep_start') || null, sleep_end: str('sleep_end') || null,
     }, a);
