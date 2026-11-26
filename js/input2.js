@@ -16,9 +16,9 @@ import {
   addFoodItem, removeFoodItem, setCalorieTarget, setManualKcal,
   calorieTargetInfo, calorieWeekSeries,
   INTENSITY_LEVELS, PAIN_SYMPTOMS,
-} from './store.js?v=40';
-import { QUESTIONNAIRES, itemId } from './psych.js?v=40';
-import { hydrationWeekChart, bodyMassWeekChart, sleepChart, calorieWeekChart } from './charts.js?v=40';
+} from './store.js?v=41';
+import { QUESTIONNAIRES, itemId } from './psych.js?v=41';
+import { hydrationWeekChart, bodyMassWeekChart, sleepChart, calorieWeekChart } from './charts.js?v=41';
 
 const root = document.getElementById('app');
 // section = top-level ('physio' | 'mental'); physioSub = 'daily' | 'training'
@@ -213,6 +213,11 @@ function dailyLog(a) {
         <div class="dl-two">
           <label class="dl-field">Sleep Time<div class="time-row"><input type="time" name="sleep_start" id="sleep-start"><button type="button" class="ghost sleep-now" data-target="sleep-start">now</button></div></label>
           <label class="dl-field">Wake Up<div class="time-row"><input type="time" name="sleep_end" id="sleep-end"><button type="button" class="ghost sleep-now" data-target="sleep-end">now</button></div></label>
+        </div>
+        <div class="sleep-or"><span class="muted small">— or enter the amount directly —</span></div>
+        <div class="dl-two">
+          <label class="dl-field">Hours<input type="number" min="0" max="24" step="1" id="sleep-amt-h" placeholder="e.g. 7"></label>
+          <label class="dl-field">Minutes<input type="number" min="0" max="59" step="1" id="sleep-amt-m" placeholder="e.g. 30"></label>
         </div>
         <div class="dl-total-row">
           <span class="dl-field-label">Total Hours</span>
@@ -1046,17 +1051,31 @@ function bindDaily(a) {
   bindHydration(a);
   bindNutrition(a);
 
-  // Sleep tracker
+  // Sleep tracker — two ways to enter: (a) Sleep Time + Wake Up, or
+  // (b) type the amount directly in the Hours/Minutes boxes.
   const sleepStart = root.querySelector('#sleep-start');
   const sleepEnd = root.querySelector('#sleep-end');
   const sleepHours = root.querySelector('#sleep-hours');
   const sleepMinutes = root.querySelector('#sleep-minutes');
+  const sleepAmtH = root.querySelector('#sleep-amt-h');
+  const sleepAmtM = root.querySelector('#sleep-amt-m');
   const sleepDisp = root.querySelector('#sleep-hours-display');
+
+  // Total minutes from whichever input is used. The direct amount (if the
+  // athlete typed any hours/minutes) takes priority; otherwise start/end times.
+  function currentSleepMins() {
+    const h = sleepAmtH && sleepAmtH.value !== '' ? Number(sleepAmtH.value) : null;
+    const m = sleepAmtM && sleepAmtM.value !== '' ? Number(sleepAmtM.value) : null;
+    if (h != null || m != null) {
+      const total = (Number(h) || 0) * 60 + (Number(m) || 0);
+      return total > 0 ? total : null;
+    }
+    return sleepMinutesBetween(sleepStart && sleepStart.value, sleepEnd && sleepEnd.value);
+  }
   function recalcSleep() {
-    if (!sleepStart || !sleepEnd) return;
-    const mins = sleepMinutesBetween(sleepStart.value, sleepEnd.value);
+    const mins = currentSleepMins();
     if (mins != null) {
-      sleepHours.value = sleepHoursBetween(sleepStart.value, sleepEnd.value);
+      sleepHours.value = Math.round((mins / 60) * 10) / 10;
       sleepMinutes.value = mins;
       sleepDisp.textContent = formatHoursMinutes(mins);
       sleepDisp.classList.toggle('short', mins < 360);
@@ -1066,26 +1085,34 @@ function bindDaily(a) {
     const target = root.querySelector('#' + b.dataset.target);
     const now = new Date();
     target.value = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+    // Switching to time-based entry clears any typed amount.
+    if (sleepAmtH) sleepAmtH.value = ''; if (sleepAmtM) sleepAmtM.value = '';
     recalcSleep();
   }));
-  if (sleepStart) sleepStart.addEventListener('change', recalcSleep);
-  if (sleepEnd) sleepEnd.addEventListener('change', recalcSleep);
+  if (sleepStart) sleepStart.addEventListener('change', () => { if (sleepAmtH) sleepAmtH.value=''; if (sleepAmtM) sleepAmtM.value=''; recalcSleep(); });
+  if (sleepEnd) sleepEnd.addEventListener('change', () => { if (sleepAmtH) sleepAmtH.value=''; if (sleepAmtM) sleepAmtM.value=''; recalcSleep(); });
+  // Typing an amount clears the start/end times (the two methods are exclusive).
+  [sleepAmtH, sleepAmtM].forEach((el) => el && el.addEventListener('input', () => {
+    if (sleepStart) sleepStart.value = ''; if (sleepEnd) sleepEnd.value = '';
+    recalcSleep();
+  }));
 
   // "Record sleep" button — log just the sleep (no need to fill the whole
-  // daily form). Saves a check-in with only the sleep fields.
+  // daily form). Accepts either entry method.
   const sleepRecordBtn = root.querySelector('#sleep-record');
   if (sleepRecordBtn) sleepRecordBtn.addEventListener('click', () => {
     recalcSleep();
     const sleepType = root.querySelector('[name="sleep_type"]');
-    const mins = sleepMinutesBetween(sleepStart && sleepStart.value, sleepEnd && sleepEnd.value);
-    if (mins == null) { alert('Enter both a Sleep Time and a Wake Up time first.'); return; }
+    const mins = currentSleepMins();
+    if (mins == null) { alert('Enter an amount of sleep (Hours/Minutes), or a Sleep Time and Wake Up time.'); return; }
+    const amountOnly = (sleepAmtH && sleepAmtH.value !== '') || (sleepAmtM && sleepAmtM.value !== '');
     saveCheckin({
       athleteId: a.id,
       sleep_type: (sleepType && sleepType.value) || 'Overnight',
-      sleep_hours: sleepHours.value ? Number(sleepHours.value) : null,
+      sleep_hours: Math.round((mins / 60) * 10) / 10,
       sleep_minutes: Number(mins),
-      sleep_start: (sleepStart && sleepStart.value) || null,
-      sleep_end: (sleepEnd && sleepEnd.value) || null,
+      sleep_start: amountOnly ? null : ((sleepStart && sleepStart.value) || null),
+      sleep_end: amountOnly ? null : ((sleepEnd && sleepEnd.value) || null),
     }, a);
     const msg = root.querySelector('#sleep-record-msg');
     if (msg) { msg.textContent = `✓ Sleep recorded (${formatHoursMinutes(mins)})`; msg.classList.add('show'); }
