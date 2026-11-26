@@ -10,17 +10,17 @@ import {
   calorieTargetInfo, getNutritionToday, nutritionKcalToday, calorieWeekSeries,
   getNutritionForDay, nutritionKcalForDay,
   getOverride, exportData, importData, pullState, startSync, isShared, resolveBackend, activeBackend,
-} from './store.js?v=37';
-import { evaluateAthlete, readinessTier, evaluateReadinessStatus, tierMeta } from './alerts.js?v=37';
+} from './store.js?v=38';
+import { evaluateAthlete, readinessTier, evaluateReadinessStatus, tierMeta } from './alerts.js?v=38';
 import {
   srpeChart, painChart, sleepChart, hydrationWeekChart, bpWeekChart, bodyMassWeekChart,
   calorieWeekChart,
   restqProfileChart, restqBalanceChart, pomsProfileChart, pomsTmdChart,
   tsciChart, smsProfileChart, smsRaiChart, weeklyTrendChart,
-} from './charts.js?v=37';
+} from './charts.js?v=38';
 import {
   QUESTIONNAIRES, scoreRestq, scorePoms, scoreTsci, scoreSms,
-} from './psych.js?v=37';
+} from './psych.js?v=38';
 
 const root = document.getElementById('app');
 // tab: 'physio' | 'psych' ; physioSub: 'daily' | 'training' | 'pain'
@@ -496,8 +496,11 @@ function dailyInsightBox(a, checkins) {
         <div class="muted small">Target ${kcal(nut.today.target)} kcal${nut.today.custom ? ' (athlete override)' : ' (training-load)'} · ${nut.today.items} item${nut.today.items === 1 ? '' : 's'} logged</div>
       </div>
       <div class="nutri-day nutri-day-prev">
-        <div class="nutri-day-head"><strong>Yesterday (${esc(nut.yLabel)})</strong> <span class="tier ${nut.yesterday.dayCls}">${esc(nut.yesterday.dayLabel)}</span></div>
-        <div>${kcal(nut.yesterday.logged)} / ${kcal(nut.yesterday.target)} kcal <span class="tier ${nut.yesterday.balCls}">${esc(nut.yesterday.balLabel)}</span></div>
+        <div class="nutri-day-head"><strong>Yesterday · ${esc(nut.yLabel)}</strong> <span class="tier ${nut.yesterday.dayCls}">${esc(nut.yesterday.dayLabel)}</span></div>
+        ${nut.yesterday.logged
+          ? `<div class="hydration-today-big">${kcal(nut.yesterday.logged)} / ${kcal(nut.yesterday.target)} kcal <span class="tier ${nut.yesterday.balCls}">${esc(nut.yesterday.balLabel)}</span></div>
+             <div class="muted small">Target ${kcal(nut.yesterday.target)} kcal · ${nut.yesterday.items} item${nut.yesterday.items === 1 ? '' : 's'} logged</div>`
+          : `<div class="muted">No food logged yesterday (target was ${kcal(nut.yesterday.target)} kcal).</div>`}
       </div>`)}
   </section>`;
 }
