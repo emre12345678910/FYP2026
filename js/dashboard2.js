@@ -5,22 +5,22 @@
 // Reads from the same localStorage the Athlete Input app writes to.
 import {
   getAthletes, checkinsForAthlete, mentalLogsForAthlete,
-  bpCategory, formatHoursMinutes, formatSgt, sgtDay, sgtWeek, sgtNow,
+  formatHoursMinutes, formatSgt, sgtDay, sgtWeek, sgtNow,
   hydrationMlForDay, hydrationGoalMl, getHydrationForDay, lastBodyMass,
   calorieTargetInfo, getNutritionToday, nutritionKcalToday, calorieWeekSeries,
   getNutritionForDay, nutritionKcalForDay,
   getOverride, exportData, importData, pullState, startSync, isShared, resolveBackend, activeBackend,
-} from './store.js?v=38';
-import { evaluateAthlete, readinessTier, evaluateReadinessStatus, tierMeta } from './alerts.js?v=38';
+} from './store.js?v=39';
+import { evaluateAthlete, readinessTier, evaluateReadinessStatus, tierMeta } from './alerts.js?v=39';
 import {
-  srpeChart, painChart, sleepChart, hydrationWeekChart, bpWeekChart, bodyMassWeekChart,
+  srpeChart, painChart, sleepChart, hydrationWeekChart, bodyMassWeekChart,
   calorieWeekChart,
   restqProfileChart, restqBalanceChart, pomsProfileChart, pomsTmdChart,
   tsciChart, smsProfileChart, smsRaiChart, weeklyTrendChart,
-} from './charts.js?v=38';
+} from './charts.js?v=39';
 import {
   QUESTIONNAIRES, scoreRestq, scorePoms, scoreTsci, scoreSms,
-} from './psych.js?v=38';
+} from './psych.js?v=39';
 
 const root = document.getElementById('app');
 // tab: 'physio' | 'psych' ; physioSub: 'daily' | 'training' | 'pain'
@@ -380,15 +380,6 @@ function bodyMassInsight(checkins) {
   };
 }
 
-// Blood pressure: latest reading's category.
-function bpInsight(checkins) {
-  const list = checkins.filter((c) => c.bp_systolic != null && c.bp_diastolic != null);
-  if (!list.length) return null;
-  const c = list[list.length - 1];
-  const cat = bpCategory(c.bp_systolic, c.bp_diastolic);
-  return { reading: `${c.bp_systolic}/${c.bp_diastolic} mmHg`, cat };
-}
-
 // Classify a day's intake vs its target into a descriptive band:
 //   Aggressive deficit → Deficit → Approaching goal → On goal →
 //   Over goal → Large surplus. Returns { label, cls }.
@@ -443,7 +434,6 @@ function dailyInsightBox(a, checkins) {
   const fluid = fluidGuidelineInsight(a, checkins);
   const slp = sleepInsight(checkins);
   const bm = bodyMassInsight(checkins);
-  const bp = bpInsight(checkins);
   const nut = nutritionInsight(a);
   const kcal = (n) => Math.round(n).toLocaleString('en-US');
 
@@ -486,9 +476,6 @@ function dailyInsightBox(a, checkins) {
          ${bm.delta != null ? `<div>Change vs previous: <strong class="${bm.delta > 0 ? 'cell-up' : bm.delta < 0 ? 'cell-down' : ''}">${bm.delta > 0 ? '+' : ''}${bm.delta.toFixed(1)} kg${bm.diffPct != null ? ` (${bm.diffPct > 0 ? '+' : ''}${bm.diffPct.toFixed(1)}%)` : ''}</strong></div>` : ''}
          <div class="insight-ai">💡 ${esc(bm.insight)}</div>`
       : '<span class="muted">No body-mass recordings yet.</span>')}
-    ${row('🩺 Blood Pressure', bp
-      ? `<strong>${esc(bp.reading)}</strong> ${bp.cat ? `<span class="tier ${bp.cat.cls}">${bp.cat.label}</span>` : ''}`
-      : '<span class="muted">No blood-pressure readings yet.</span>')}
     ${row('🍽️ Nutrition', `
       <div class="nutri-day">
         <div class="nutri-day-head"><strong>Today</strong> <span class="tier ${nut.today.dayCls}">${esc(nut.today.dayLabel)}</span></div>
@@ -505,7 +492,7 @@ function dailyInsightBox(a, checkins) {
   </section>`;
 }
 
-/* ---- Daily sub-tab: body mass, BP, sleep, hydration, nutrition ---- */
+/* ---- Daily sub-tab: body mass, sleep, hydration, nutrition ---- */
 function dailyPanel(a, checkins) {
   if (!checkins.length) return `${dailyInsightBox(a, checkins)}<section class="panel"><p class="muted">No daily data yet for this athlete.</p></section>`;
   const days = groupByDay(checkins);
@@ -513,7 +500,6 @@ function dailyPanel(a, checkins) {
   // --- series for each daily aspect ---
   const sleepSeries = days.map((d) => ({ label: d.label, hours: avg(d.items.filter((c) => c.sleep_type !== 'Nap'), (c) => c.sleep_hours) })).filter((d) => d.hours != null);
   const bmSeries = days.map((d) => ({ label: d.label, kg: avg(d.items, (c) => c.body_mass_kg) })).filter((d) => d.kg != null);
-  const bpDays = days.map((d) => ({ label: d.label, sys: avg(d.items, (c) => c.bp_systolic), dia: avg(d.items, (c) => c.bp_diastolic) })).filter((d) => d.sys != null && d.dia != null);
   // Hydration is per-day in its own store — build a weekly series like the athlete history.
   const goalMl = hydrationGoalMl(a, 0).total;
   const last7 = last7Days().map((d) => ({ label: d.label, ml: hydrationMlForDay(a.id, d.key) }));
@@ -525,7 +511,6 @@ function dailyPanel(a, checkins) {
     ${aspectSection('💧 Hydration', hydrationWeekChart(last7, goalMl), hydrationLogTable(a))}
     ${aspectSection('🍽️ Nutrition', calorieWeekChart(calSeries), calorieLogTable(calSeries))}
     ${aspectSection('⚖️ Body Mass', bodyMassWeekChart(bmSeries), bodyMassLogTable(checkins))}
-    ${aspectSection('🩺 Blood Pressure', bpWeekChart(bpDays), bpLogTable(checkins))}
     ${aspectSection('😴 Sleep', sleepChart(sleepSeries), sleepLogTable(checkins))}`;
 }
 
@@ -592,17 +577,6 @@ function bodyMassLogTable(checkins) {
     return `<tr><td>${esc(formatSgt(c.timestampUtc))}</td><td>${c.body_mass_kg} kg</td><td class="${delta != null && delta < 0 ? 'cell-down' : delta > 0 ? 'cell-up' : ''}">${deltaStr}</td></tr>`;
   }).join('');
   return `<div class="table-wrap"><table class="data-table"><thead><tr><th>Time (SGT)</th><th>Body mass</th><th>Δ vs prev (kg / %)</th></tr></thead><tbody>${rows}</tbody></table></div>`;
-}
-
-function bpLogTable(checkins) {
-  const list = checkins.filter((c) => c.bp_systolic != null && c.bp_diastolic != null).slice().reverse();
-  if (!list.length) return '<p class="muted">No blood-pressure readings yet.</p>';
-  const rows = list.map((c) => {
-    const cat = bpCategory(c.bp_systolic, c.bp_diastolic);
-    return `<tr><td>${esc(formatSgt(c.timestampUtc))}</td><td>${c.bp_timing ? `<span class="pill">${esc(c.bp_timing)}</span>` : '—'}</td>
-      <td>${c.bp_systolic}/${c.bp_diastolic} mmHg</td><td>${cat ? `<span class="tier ${cat.cls}">${cat.label}</span>` : '—'}</td></tr>`;
-  }).join('');
-  return `<div class="table-wrap"><table class="data-table"><thead><tr><th>Time (SGT)</th><th>Timing</th><th>Reading</th><th>Category</th></tr></thead><tbody>${rows}</tbody></table></div>`;
 }
 
 // Pain & Symptoms interpretation for the coach.

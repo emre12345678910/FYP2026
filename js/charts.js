@@ -370,22 +370,6 @@ export function hydrationWeekChart(series, goalMl) {
   );
 }
 
-// Weekly blood pressure: systolic (red) and diastolic (dark) lines.
-export function bpWeekChart(series) {
-  if (!series.length) return emptyChart('No blood-pressure data yet');
-  const labels = series.map((s) => s.label);
-  const all = series.flatMap((s) => [s.sys, s.dia]).filter((v) => v != null);
-  const min = Math.floor(Math.min(...all, 60) / 10) * 10 - 10;
-  const max = Math.ceil(Math.max(...all, 140) / 10) * 10 + 10;
-  const sysPts = series.map((s, i) => ({ x: scaleX(i, series.length), y: scaleY(s.sys, min, max) }));
-  const diaPts = series.map((s, i) => ({ x: scaleX(i, series.length), y: scaleY(s.dia, min, max) }));
-  const dots = (pts, cls) => pts.map((p) => `<circle cx="${p.x}" cy="${p.y}" r="3" class="${cls}"/>`).join('');
-  return svgWrap(
-    axes(min, max, labels, { yFmt: (v) => v.toFixed(0), title: 'Weekly Readings — Systolic (red) / Diastolic (dark)' }) +
-    `<path d="${path(sysPts)}" class="line-red"/>` + dots(sysPts, 'dot-red') +
-    `<path d="${path(diaPts)}" class="line-dark"/>` + dots(diaPts, 'dot-dark')
-  );
-}
 
 // Weekly body-mass (kg) as a red line.
 // opts.labelLast → annotate the final point with its value (e.g. "72.4kg").
