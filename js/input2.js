@@ -16,9 +16,9 @@ import {
   addFoodItem, removeFoodItem, setCalorieTarget, setManualKcal,
   calorieTargetInfo, calorieWeekSeries,
   INTENSITY_LEVELS, PAIN_SYMPTOMS,
-} from './store.js?v=39';
-import { QUESTIONNAIRES, itemId } from './psych.js?v=39';
-import { hydrationWeekChart, bodyMassWeekChart, sleepChart, calorieWeekChart } from './charts.js?v=39';
+} from './store.js?v=40';
+import { QUESTIONNAIRES, itemId } from './psych.js?v=40';
+import { hydrationWeekChart, bodyMassWeekChart, sleepChart, calorieWeekChart } from './charts.js?v=40';
 
 const root = document.getElementById('app');
 // section = top-level ('physio' | 'mental'); physioSub = 'daily' | 'training'
@@ -220,6 +220,10 @@ function dailyLog(a) {
         </div>
         <input type="hidden" name="sleep_hours" id="sleep-hours">
         <input type="hidden" name="sleep_minutes" id="sleep-minutes">
+        <div class="dl-card-actions">
+          <button type="button" class="ghost sleep-record-btn" id="sleep-record">😴 Record sleep</button>
+          <span id="sleep-record-msg" class="save-msg"></span>
+        </div>
       </section>
 
       <div class="form-actions dl-wide">
@@ -1066,6 +1070,27 @@ function bindDaily(a) {
   }));
   if (sleepStart) sleepStart.addEventListener('change', recalcSleep);
   if (sleepEnd) sleepEnd.addEventListener('change', recalcSleep);
+
+  // "Record sleep" button — log just the sleep (no need to fill the whole
+  // daily form). Saves a check-in with only the sleep fields.
+  const sleepRecordBtn = root.querySelector('#sleep-record');
+  if (sleepRecordBtn) sleepRecordBtn.addEventListener('click', () => {
+    recalcSleep();
+    const sleepType = root.querySelector('[name="sleep_type"]');
+    const mins = sleepMinutesBetween(sleepStart && sleepStart.value, sleepEnd && sleepEnd.value);
+    if (mins == null) { alert('Enter both a Sleep Time and a Wake Up time first.'); return; }
+    saveCheckin({
+      athleteId: a.id,
+      sleep_type: (sleepType && sleepType.value) || 'Overnight',
+      sleep_hours: sleepHours.value ? Number(sleepHours.value) : null,
+      sleep_minutes: Number(mins),
+      sleep_start: (sleepStart && sleepStart.value) || null,
+      sleep_end: (sleepEnd && sleepEnd.value) || null,
+    }, a);
+    const msg = root.querySelector('#sleep-record-msg');
+    if (msg) { msg.textContent = `✓ Sleep recorded (${formatHoursMinutes(mins)})`; msg.classList.add('show'); }
+    setTimeout(render, 900);
+  });
 
   // Body Mass: live change vs previous recorded weight
   const bodyMassInput = root.querySelector('#body-mass-input');
