@@ -621,6 +621,7 @@ a.ghost { text-decoration: none; display: inline-flex; align-items: center; }
 .dl-change-val.up { color: var(--green); }
 .dl-change-val.down { color: var(--red); }
 .dl-total-row { display: flex; justify-content: space-between; align-items: center; border-top: 1px solid var(--line); padding-top: 8px; }
+.dl-card-actions { display: flex; align-items: center; gap: 12px; }
 .dl-total-value { font-size: 17px; font-weight: 800; color: var(--green); }
 .dl-inline-status { font-size: 13px; font-weight: 600; }
 .dl-subsection { border-top: 1px solid var(--line); margin-top: 6px; padding-top: 12px; display: flex; flex-direction: column; gap: 12px; }
