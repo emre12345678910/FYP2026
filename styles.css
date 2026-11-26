@@ -813,3 +813,8 @@ a.ghost { text-decoration: none; display: inline-flex; align-items: center; }
 .portion-btn.sel { border-color: var(--blue); color: var(--blue); box-shadow: 0 0 0 1px var(--blue) inset; }
 .food-sel-preview { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 10px 14px; font-size: 14px; display: flex; justify-content: space-between; align-items: center; gap: 10px; }
 .food-estimate-add { width: 100%; }
+
+/* Coach Insights — nutrition today/yesterday sub-rows */
+.nutri-day { padding: 2px 0; }
+.nutri-day-head { display: flex; align-items: center; gap: 8px; margin-bottom: 2px; }
+.nutri-day-prev { margin-top: 10px; padding-top: 8px; border-top: 1px dashed var(--line); }

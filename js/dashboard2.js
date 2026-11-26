@@ -8,18 +8,19 @@ import {
   bpCategory, formatHoursMinutes, formatSgt, sgtDay, sgtWeek, sgtNow,
   hydrationMlForDay, hydrationGoalMl, getHydrationForDay, lastBodyMass,
   calorieTargetInfo, getNutritionToday, nutritionKcalToday, calorieWeekSeries,
+  getNutritionForDay, nutritionKcalForDay,
   getOverride, exportData, importData, pullState, startSync, isShared, resolveBackend, activeBackend,
-} from './store.js?v=36';
-import { evaluateAthlete, readinessTier, evaluateReadinessStatus, tierMeta } from './alerts.js?v=36';
+} from './store.js?v=37';
+import { evaluateAthlete, readinessTier, evaluateReadinessStatus, tierMeta } from './alerts.js?v=37';
 import {
   srpeChart, painChart, sleepChart, hydrationWeekChart, bpWeekChart, bodyMassWeekChart,
   calorieWeekChart,
   restqProfileChart, restqBalanceChart, pomsProfileChart, pomsTmdChart,
   tsciChart, smsProfileChart, smsRaiChart, weeklyTrendChart,
-} from './charts.js?v=36';
+} from './charts.js?v=37';
 import {
   QUESTIONNAIRES, scoreRestq, scorePoms, scoreTsci, scoreSms,
-} from './psych.js?v=36';
+} from './psych.js?v=37';
 
 const root = document.getElementById('app');
 // tab: 'physio' | 'psych' ; physioSub: 'daily' | 'training' | 'pain'
@@ -388,35 +389,51 @@ function bpInsight(checkins) {
   return { reading: `${c.bp_systolic}/${c.bp_diastolic} mmHg`, cat };
 }
 
-// Nutrition: today's training-load day type, recommended calorie range, the
-// athlete's effective target (custom override or recommended), logged kcal and
-// how they balance. Read-only — the dashboard never edits nutrition.
-function nutritionInsight(a) {
-  const info = calorieTargetInfo(a);                 // day type + recommended range
-  const today = getNutritionToday(a.id);
-  const logged = nutritionKcalToday(a.id);
-  const target = today.target != null ? today.target : info.recommended;
-  const custom = today.target != null && today.target !== info.recommended;
-  const dayCls = info.dayType === 'heavy' ? 'red' : info.dayType === 'mixed' ? 'yellow' : 'green';
+// Classify a day's intake vs its target into a descriptive band:
+//   Aggressive deficit → Deficit → Approaching goal → On goal →
+//   Over goal → Large surplus. Returns { label, cls }.
+function calorieBand(logged, target) {
+  if (!target) return { label: 'No target', cls: 'muted' };
+  if (!logged) return { label: 'Nothing logged', cls: 'muted' };
+  const diff = logged - target;
+  const pct = Math.round((logged / target) * 100);
+  if (diff <= -600) return { label: `Aggressive deficit (${pct}%)`, cls: 'red' };
+  if (diff <= -250) return { label: `Normal deficit (${pct}%)`, cls: 'yellow' };
+  if (diff < -50) return { label: `Approaching goal (${pct}%)`, cls: 'yellow' };
+  if (diff <= 100) return { label: `On goal (${pct}%)`, cls: 'green' };
+  if (diff < 500) return { label: `Over goal (${pct}%)`, cls: 'yellow' };
+  return { label: `Large surplus (${pct}%)`, cls: 'red' };
+}
 
-  let balLabel, balCls;
-  if (!logged) { balLabel = 'Nothing logged yet'; balCls = 'muted'; }
-  else {
-    const diff = logged - target;
-    const pct = Math.round((logged / target) * 100);
-    if (diff <= -500) { balLabel = `Aggressive deficit (${pct}%)`; balCls = 'red'; }
-    else if (diff < -100) { balLabel = `Deficit (${pct}%)`; balCls = 'yellow'; }
-    else if (diff <= 100) { balLabel = `On target (${pct}%)`; balCls = 'green'; }
-    else if (diff < 500) { balLabel = `Surplus (${pct}%)`; balCls = 'yellow'; }
-    else { balLabel = `Large surplus (${pct}%)`; balCls = 'red'; }
-  }
+// Nutrition for a specific SGT day: the training-load day type + recommended
+// range, the effective target (custom override or recommended), logged kcal,
+// and the descriptive band. Read-only.
+function nutritionForDay(a, dayKey) {
+  const info = calorieTargetInfo(a, dayKey);
+  const rec = getNutritionForDay(a.id, dayKey);
+  const logged = nutritionKcalForDay(a.id, dayKey);
+  const target = rec.target != null ? rec.target : info.recommended;
+  const custom = rec.target != null && rec.target !== info.recommended;
+  const dayCls = info.dayType === 'heavy' ? 'red' : info.dayType === 'mixed' ? 'yellow' : 'green';
   const rangeTxt = info.rangeLo != null
     ? `${info.rangeLo.toLocaleString('en-US')}–${info.rangeHi.toLocaleString('en-US')} kcal (${info.lo}–${info.hi} kcal/kg)`
     : `${info.lo}–${info.hi} kcal/kg — no body weight on file`;
+  const band = calorieBand(logged, target);
   return {
     dayType: info.dayType, dayLabel: info.label, dayCls,
     recommended: info.recommended, target, custom, logged, rangeTxt,
-    balLabel, balCls, items: today.foods.length,
+    balLabel: band.label, balCls: band.cls, items: rec.foods.length,
+  };
+}
+
+// Today's + yesterday's nutrition for the Coach Insights nutrition row.
+function nutritionInsight(a) {
+  const todayKey = sgtNow().date;
+  const yKey = sgtDay(new Date(Date.now() - 86400000).toISOString());
+  return {
+    today: nutritionForDay(a, todayKey),
+    yesterday: nutritionForDay(a, yKey),
+    yLabel: yKey.slice(5).replace('-', '/'),
   };
 }
 
@@ -473,9 +490,15 @@ function dailyInsightBox(a, checkins) {
       ? `<strong>${esc(bp.reading)}</strong> ${bp.cat ? `<span class="tier ${bp.cat.cls}">${bp.cat.label}</span>` : ''}`
       : '<span class="muted">No blood-pressure readings yet.</span>')}
     ${row('🍽️ Nutrition', `
-      <div><span class="tier ${nut.dayCls}">${esc(nut.dayLabel)}</span> <span class="muted small">· ${esc(nut.rangeTxt)}</span></div>
-      <div class="hydration-today-big">${kcal(nut.logged)} / ${kcal(nut.target)} kcal <span class="tier ${nut.balCls}">${esc(nut.balLabel)}</span></div>
-      <div class="muted small">Target: ${kcal(nut.target)} kcal${nut.custom ? ' (athlete override)' : ' (training-load recommended)'} · ${nut.items} item${nut.items === 1 ? '' : 's'} logged today</div>`)}
+      <div class="nutri-day">
+        <div class="nutri-day-head"><strong>Today</strong> <span class="tier ${nut.today.dayCls}">${esc(nut.today.dayLabel)}</span></div>
+        <div class="hydration-today-big">${kcal(nut.today.logged)} / ${kcal(nut.today.target)} kcal <span class="tier ${nut.today.balCls}">${esc(nut.today.balLabel)}</span></div>
+        <div class="muted small">Target ${kcal(nut.today.target)} kcal${nut.today.custom ? ' (athlete override)' : ' (training-load)'} · ${nut.today.items} item${nut.today.items === 1 ? '' : 's'} logged</div>
+      </div>
+      <div class="nutri-day nutri-day-prev">
+        <div class="nutri-day-head"><strong>Yesterday (${esc(nut.yLabel)})</strong> <span class="tier ${nut.yesterday.dayCls}">${esc(nut.yesterday.dayLabel)}</span></div>
+        <div>${kcal(nut.yesterday.logged)} / ${kcal(nut.yesterday.target)} kcal <span class="tier ${nut.yesterday.balCls}">${esc(nut.yesterday.balLabel)}</span></div>
+      </div>`)}
   </section>`;
 }
 
